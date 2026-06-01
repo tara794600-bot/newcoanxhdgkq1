@@ -146,14 +146,14 @@ const getTypingDelay = (currentCharacter: string): number => {
 
 const getLongTypingDelay = (currentCharacter: string): number => {
   if (currentCharacter === ' ' || currentCharacter === '\u00A0') {
-    return 24
+    return 42
   }
 
   if (/[,.]/.test(currentCharacter)) {
-    return 120
+    return 190
   }
 
-  return 42
+  return 72
 }
 
 const normalizePowerlinkPathPrefix = (prefix: string): string => {
@@ -1644,7 +1644,7 @@ function App() {
         return
       }
 
-      timeoutId = window.setTimeout(typeNextCharacter, 15)
+      timeoutId = window.setTimeout(typeNextCharacter, 24)
     }
 
     timeoutId = window.setTimeout(typeNextCharacter, 480)
