@@ -127,6 +127,10 @@ const COMPANIES_BANNER_TYPING_TEXT_MOBILE =
   '경찰신고만으로는\n피해금을 되찾을 수 없습니다.\n지금 바로 대응해\n피해금 회복이 가능합니다.'
 const getHeroTypingText = (keyword: string): string =>
   `${keyword},\n나란을 만난 순간부터\n해결의 길은 시작됩니다`
+const RECOVERY_TYPING_MESSAGES = [
+  '사기 피해 회복은 속도전입니다. 단 1분의 망설임이 평생의 후회가 되지 않도록, 금융사기 전담팀이 지금 즉시 가동되어 당신의 잃어버린 돈을 되찾기 위한 추적을 시작합니다.',
+  '리딩방, 비상장 주식, 코인 사기 조직들은 치밀합니다. 하지만 그들이 돈을 빼돌리는 경로를 정확히 짚어낼 수 있다면 회수의 길은 열립니다. 3만 6천 건이 넘는 상담 데이터가 말해줍니다.',
+] as const
 
 const getTypingDelay = (currentCharacter: string): number => {
   if (currentCharacter === '\n') {
@@ -138,6 +142,18 @@ const getTypingDelay = (currentCharacter: string): number => {
   }
 
   return 105
+}
+
+const getLongTypingDelay = (currentCharacter: string): number => {
+  if (currentCharacter === ' ' || currentCharacter === '\u00A0') {
+    return 24
+  }
+
+  if (/[,.]/.test(currentCharacter)) {
+    return 120
+  }
+
+  return 42
 }
 
 const normalizePowerlinkPathPrefix = (prefix: string): string => {
@@ -1227,6 +1243,7 @@ function App() {
   const [powerlinkKeywordInput, setPowerlinkKeywordInput] = useState('')
   const [powerlinkGenerateBusy, setPowerlinkGenerateBusy] = useState(false)
   const [heroTypedText, setHeroTypedText] = useState('')
+  const [recoveryTypedText, setRecoveryTypedText] = useState('')
   const [companiesBannerTypedText, setCompaniesBannerTypedText] = useState('')
   const [isCompactViewport, setIsCompactViewport] = useState(() => window.matchMedia('(max-width: 900px)').matches)
   const [companyDetailStacked, setCompanyDetailStacked] = useState(false)
@@ -1587,6 +1604,55 @@ function App() {
       window.clearTimeout(timeoutId)
     }
   }, [route, companiesBannerTypingText])
+
+  useEffect(() => {
+    if (route !== 'home') {
+      setRecoveryTypedText(RECOVERY_TYPING_MESSAGES[0])
+      return
+    }
+
+    let timeoutId = 0
+    let messageIndex = 0
+    let typingIndex = 0
+    let isDeleting = false
+    setRecoveryTypedText('')
+
+    const typeNextCharacter = () => {
+      const currentMessage = RECOVERY_TYPING_MESSAGES[messageIndex]
+
+      if (!isDeleting) {
+        typingIndex += 1
+        setRecoveryTypedText(currentMessage.slice(0, typingIndex))
+
+        if (typingIndex >= currentMessage.length) {
+          isDeleting = true
+          timeoutId = window.setTimeout(typeNextCharacter, 1900)
+          return
+        }
+
+        timeoutId = window.setTimeout(typeNextCharacter, getLongTypingDelay(currentMessage[typingIndex - 1]))
+        return
+      }
+
+      typingIndex = Math.max(typingIndex - 1, 0)
+      setRecoveryTypedText(currentMessage.slice(0, typingIndex))
+
+      if (typingIndex <= 0) {
+        isDeleting = false
+        messageIndex = (messageIndex + 1) % RECOVERY_TYPING_MESSAGES.length
+        timeoutId = window.setTimeout(typeNextCharacter, 420)
+        return
+      }
+
+      timeoutId = window.setTimeout(typeNextCharacter, 15)
+    }
+
+    timeoutId = window.setTimeout(typeNextCharacter, 480)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [route])
 
   useEffect(() => {
     if (route !== 'home') {
@@ -3486,6 +3552,17 @@ function App() {
                 </div>
               </section>
             ) : null}
+
+            <section className="recovery-typing-section reveal-on-scroll" aria-label="사기 피해회복 대응 메시지">
+              <div className="section-wrap recovery-typing-inner">
+                <p>
+                  <span>{recoveryTypedText || '\u00A0'}</span>
+                  <span className="recovery-typing-cursor" aria-hidden="true">
+                    |
+                  </span>
+                </p>
+              </div>
+            </section>
 
             <section className="rolling-section reveal-on-scroll" aria-label="성공사례 롤링 배너">
               <div className="section-wrap rolling-head">

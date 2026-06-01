@@ -994,8 +994,65 @@ main {
   height: 100%;
 }
 
+.recovery-typing-section {
+  position: relative;
+  padding: 86px 0 92px;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(180deg, #030303 0%, #111111 100%);
+  background-size:
+    72px 72px,
+    72px 72px,
+    cover;
+  color: #f8fafc;
+  overflow: hidden;
+}
+
+.recovery-typing-section::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.62) 0%, rgba(0, 0, 0, 0) 24%, rgba(0, 0, 0, 0) 76%, rgba(0, 0, 0, 0.62) 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0) 32%, rgba(0, 0, 0, 0.32) 100%);
+  pointer-events: none;
+}
+
+.recovery-typing-inner {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  min-height: clamp(190px, 19vw, 270px);
+  text-align: center;
+}
+
+.recovery-typing-inner p {
+  width: min(1080px, 100%);
+  min-height: 4.8em;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: clamp(28px, 3.2vw, 48px);
+  font-weight: 900;
+  line-height: 1.45;
+  letter-spacing: 0;
+  word-break: keep-all;
+  text-wrap: balance;
+  text-shadow:
+    0 0 18px rgba(255, 255, 255, 0.12),
+    0 16px 34px rgba(0, 0, 0, 0.72);
+}
+
+.recovery-typing-cursor {
+  display: inline-block;
+  margin-left: 0.08em;
+  color: #ffffff;
+  animation: hero-cursor-blink 1s steps(1, end) infinite;
+}
+
 .rolling-section {
-  margin-top: 8px;
+  margin-top: 0;
   padding: 88px 0 96px;
   background: linear-gradient(180deg, #ebe8e2 0%, #f2efe9 100%);
   border-top: 1px solid rgba(194, 182, 162, 0.65);
@@ -2883,6 +2940,24 @@ main {
     height: 24px;
   }
 
+  .recovery-typing-section {
+    padding: 62px 0 68px;
+    background-size:
+      54px 54px,
+      54px 54px,
+      cover;
+  }
+
+  .recovery-typing-inner {
+    min-height: 210px;
+  }
+
+  .recovery-typing-inner p {
+    min-height: 6.8em;
+    font-size: clamp(22px, 5.8vw, 34px);
+    line-height: 1.48;
+  }
+
   .info-section,
   .consulting-section {
     padding: 30px 18px;
@@ -3554,6 +3629,20 @@ main {
     height: 52px;
     padding: 0 16px;
     font-size: 16px;
+  }
+
+  .recovery-typing-section {
+    padding: 48px 0 54px;
+  }
+
+  .recovery-typing-inner {
+    min-height: 230px;
+  }
+
+  .recovery-typing-inner p {
+    min-height: 8.4em;
+    font-size: clamp(18px, 5.1vw, 24px);
+    line-height: 1.55;
   }
 
   .rolling-head h2 {
