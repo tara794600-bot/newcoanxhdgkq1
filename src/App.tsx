@@ -23,8 +23,6 @@ import {
 } from 'firebase/firestore'
 import { deleteObject, getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage'
 import heroImg from './assets/hero.png'
-import i1Img from './assets/i1.png'
-import i2Img from './assets/i2.png'
 import picImg from './assets/pic-green.png'
 import icon1Img from './assets/icon1-green.png'
 import icon2Img from './assets/icon2-green.png'
@@ -123,16 +121,12 @@ const CONTACT_PHONE_TEL = `tel:${CONTACT_PHONE_NUMBER.replace(/[^0-9+]/g, '')}`
 const GOOGLE_ADS_ID = 'AW-16949684264'
 const GOOGLE_ADS_CONVERSION_SEND_TO = 'AW-16949684264/I91fCL6M-qMcEKjQnpI_'
 const GOOGLE_ADS_SCRIPT_ID = 'google-ads-gtag-script'
-const HERO_TYPING_TEXT = '나란에서 해결할 수 없다면\n그\u00A0어디서도\u00A0해결할\u00A0수\u00A0없습니다.'
 const COMPANIES_BANNER_TYPING_TEXT_DESKTOP =
   '경찰신고만으로는 피해금을 되찾을 수 없습니다.\n지금 바로 대응해 피해금 회복이 가능합니다.'
 const COMPANIES_BANNER_TYPING_TEXT_MOBILE =
   '경찰신고만으로는\n피해금을 되찾을 수 없습니다.\n지금 바로 대응해\n피해금 회복이 가능합니다.'
-const HERO_STAT_ITEMS = [
-  { label: '누적 상담건수', value: 36489 },
-  { label: '누적 해결 건수', value: 999 },
-  { label: '일 평균 상담건수', value: 146 },
-] as const
+const getHeroTypingText = (keyword: string): string =>
+  `${keyword},\n나란을 만난 순간부터\n해결의 길은 시작됩니다`
 
 const getTypingDelay = (currentCharacter: string): number => {
   if (currentCharacter === '\n') {
@@ -1171,7 +1165,6 @@ function App() {
   const rollingImageInputRef = useRef<HTMLInputElement | null>(null)
   const companyImageInputRef = useRef<HTMLInputElement | null>(null)
   const quickFormSectionRef = useRef<HTMLElement | null>(null)
-  const heroStatsBarRef = useRef<HTMLDivElement | null>(null)
   const companyDetailImageRef = useRef<HTMLDivElement | null>(null)
   const companyDetailCopyRef = useRef<HTMLDivElement | null>(null)
   const companyListTopRef = useRef<HTMLDivElement | null>(null)
@@ -1237,8 +1230,6 @@ function App() {
   const [companiesBannerTypedText, setCompaniesBannerTypedText] = useState('')
   const [isCompactViewport, setIsCompactViewport] = useState(() => window.matchMedia('(max-width: 900px)').matches)
   const [companyDetailStacked, setCompanyDetailStacked] = useState(false)
-  const [heroStatValues, setHeroStatValues] = useState<number[]>(() => HERO_STAT_ITEMS.map(() => 0))
-  const [heroStatsShouldAnimate, setHeroStatsShouldAnimate] = useState(false)
 
   const landingPath = window.location.pathname || '/'
   const landingSearch = getTrackableQueryString(window.location.search || '', window.location.hash || '')
@@ -1259,8 +1250,10 @@ function App() {
     const matchedLink = powerlinkLinks.find((item) => item.token === landingToken)
     return matchedLink?.keyword ?? ''
   }, [landingToken, powerlinkLinks, trackedNaverKeyword])
+  const heroKeywordLabel = landingPowerlinkKeyword || '금융사기'
+  const heroTypingText = useMemo(() => getHeroTypingText(heroKeywordLabel), [heroKeywordLabel])
   const isNaverPowerlinkVisit = Boolean(landingToken || trackedNaverKeyword)
-  const showHeroTypingCursor = route === 'home' && heroTypedText.length < HERO_TYPING_TEXT.length
+  const showHeroTypingCursor = route === 'home' && heroTypedText.length < heroTypingText.length
   const companiesBannerTypingText = isCompactViewport
     ? COMPANIES_BANNER_TYPING_TEXT_MOBILE
     : COMPANIES_BANNER_TYPING_TEXT_DESKTOP
@@ -1541,7 +1534,7 @@ function App() {
 
   useEffect(() => {
     if (route !== 'home') {
-      setHeroTypedText(HERO_TYPING_TEXT)
+      setHeroTypedText(heroTypingText)
       return
     }
 
@@ -1551,13 +1544,13 @@ function App() {
 
     const typeNextCharacter = () => {
       typingIndex += 1
-      setHeroTypedText(HERO_TYPING_TEXT.slice(0, typingIndex))
+      setHeroTypedText(heroTypingText.slice(0, typingIndex))
 
-      if (typingIndex >= HERO_TYPING_TEXT.length) {
+      if (typingIndex >= heroTypingText.length) {
         return
       }
 
-      timeoutId = window.setTimeout(typeNextCharacter, getTypingDelay(HERO_TYPING_TEXT[typingIndex - 1]))
+      timeoutId = window.setTimeout(typeNextCharacter, getTypingDelay(heroTypingText[typingIndex - 1]))
     }
 
     timeoutId = window.setTimeout(typeNextCharacter, 340)
@@ -1565,7 +1558,7 @@ function App() {
     return () => {
       window.clearTimeout(timeoutId)
     }
-  }, [route])
+  }, [route, heroTypingText])
 
   useEffect(() => {
     if (route !== 'companies') {
@@ -1594,82 +1587,6 @@ function App() {
       window.clearTimeout(timeoutId)
     }
   }, [route, companiesBannerTypingText])
-
-  useEffect(() => {
-    if (route !== 'home') {
-      setHeroStatsShouldAnimate(false)
-      setHeroStatValues(HERO_STAT_ITEMS.map(() => 0))
-      return
-    }
-
-    setHeroStatsShouldAnimate(false)
-    setHeroStatValues(HERO_STAT_ITEMS.map(() => 0))
-    const statsBarElement = heroStatsBarRef.current
-
-    if (!statsBarElement) {
-      return
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const isVisible = entries.some((entry) => entry.isIntersecting)
-
-        if (!isVisible) {
-          return
-        }
-
-        setHeroStatsShouldAnimate(true)
-        observer.disconnect()
-      },
-      {
-        threshold: 0.42,
-        rootMargin: '0px 0px -6% 0px',
-      },
-    )
-
-    observer.observe(statsBarElement)
-
-    return () => {
-      observer.disconnect()
-    }
-  }, [route])
-
-  useEffect(() => {
-    if (route !== 'home' || !heroStatsShouldAnimate) {
-      return
-    }
-
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-
-    if (prefersReducedMotion) {
-      setHeroStatValues(HERO_STAT_ITEMS.map((item) => item.value))
-      return
-    }
-
-    let frameId = 0
-    let animationStart = 0
-    const durationMs = 1900
-
-    const animate = (now: number) => {
-      if (!animationStart) {
-        animationStart = now
-      }
-
-      const progress = Math.min((now - animationStart) / durationMs, 1)
-      const eased = 1 - (1 - progress) ** 3
-      setHeroStatValues(HERO_STAT_ITEMS.map((item) => Math.round(item.value * eased)))
-
-      if (progress < 1) {
-        frameId = window.requestAnimationFrame(animate)
-      }
-    }
-
-    frameId = window.requestAnimationFrame(animate)
-
-    return () => {
-      window.cancelAnimationFrame(frameId)
-    }
-  }, [route, heroStatsShouldAnimate])
 
   useEffect(() => {
     if (route !== 'home') {
@@ -3474,16 +3391,10 @@ function App() {
 
         {route === 'home' && (
           <>
-            <section className="hero-section">
+            <section className="hero-section" aria-label="법무법인 나란 피해회복 첫 화면">
               <div className="hero-inner section-wrap">
                 <div className="hero-copy">
-                  <p className="hero-eyebrow hero-eyebrow-nowrap">
-                    대규모 사기 사건, 비상장주식부터 보이스피싱 단체 사기까지
-                  </p>
-                  {landingPowerlinkKeyword ? (
-                    <p className="hero-keyword-highlight">{landingPowerlinkKeyword}</p>
-                  ) : null}
-                  <h1 aria-label="나란에서 해결할 수 없다면 그 어디서도 해결할 수 없습니다.">
+                  <h1 aria-label={heroTypingText}>
                     <span className="hero-typing-text">{heroTypedText || '\u00A0'}</span>
                     {showHeroTypingCursor ? (
                       <span className="hero-typing-cursor" aria-hidden="true">
@@ -3491,47 +3402,42 @@ function App() {
                       </span>
                     ) : null}
                   </h1>
+                  <p className="hero-lead">
+                    리딩방, 비상장 주식, 코인, 로맨스 스캠까지. 이미 빠져나간 투자금도 골든타임을 놓치지
+                    않는다면 회수할 수 있습니다.
+                  </p>
+                  <p className="hero-support">
+                    상담 시 피해 경위 · 입금 내역 · 상대방 정보를 말씀해주시면, 즉시 자산 추적 가능성을
+                    진단해드립니다.
+                  </p>
                 </div>
 
-                <div className="hero-stats-bar" ref={heroStatsBarRef} aria-label="상담 및 해결 통계">
-                  <ul className="hero-stats-list">
-                    {HERO_STAT_ITEMS.map((item, index) => (
-                      <li className="hero-stats-item" key={item.label}>
-                        <p className="hero-stats-label">{item.label}</p>
-                        <strong className="hero-stats-value">{(heroStatValues[index] ?? 0).toLocaleString('ko-KR')}+</strong>
-                      </li>
-                    ))}
-                  </ul>
+                <div className="hero-receipt-pill" aria-label="피해 접수 현황">
+                  <span>피해 접수</span>
+                  <strong>60</strong>
+                  <span>건+</span>
+                  <small>(2026-05-28 기준)</small>
                 </div>
 
-                <a className="hero-cta" href={getRoutePath('home')} onClick={handleConsultingNavigation}>
-                  피해 사실 접수
-                </a>
-
-                <div className="hero-experts">
-                  <article className="expert-card expert-card-left">
-                    <img
-                      className="expert-thumb expert-thumb-avatar"
-                      src={i1Img}
-                      alt="서지원 변호사 프로필"
-                    />
-                    <div>
-                      <h3>투자사기 피해회복 전문</h3>
-                      <p>서지원 변호사</p>
-                    </div>
-                  </article>
-
-                  <article className="expert-card expert-card-right">
-                    <img
-                      className="expert-thumb expert-thumb-logo"
-                      src={i2Img}
-                      alt="법무법인 나란 엠블럼"
-                    />
-                    <div>
-                      <h3>핀테크 전문</h3>
-                      <p>법무법인 나란</p>
-                    </div>
-                  </article>
+                <div className="hero-action-row">
+                  <a className="hero-phone-cta" href={CONTACT_PHONE_TEL} aria-label={`전화문의 ${CONTACT_PHONE_NUMBER}`}>
+                    <span className="hero-button-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" focusable="false">
+                        <path
+                          d="M6.7 3.3A2 2 0 0 1 8.9 2h1.9a2 2 0 0 1 2 1.7l.4 2.8a2 2 0 0 1-1.1 2.1l-1.4.7a13.2 13.2 0 0 0 4.1 4.1l.7-1.4a2 2 0 0 1 2.1-1.1l2.8.4a2 2 0 0 1 1.7 2v1.9a2 2 0 0 1-1.3 2.2l-1.2.4a7.8 7.8 0 0 1-6.8-1.1A22.3 22.3 0 0 1 5.2 10a7.8 7.8 0 0 1-1.1-6.8l.4-1.2a2 2 0 0 1 2.2-1.3Z"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="1.9"
+                        />
+                      </svg>
+                    </span>
+                    <span>전화문의 {CONTACT_PHONE_NUMBER}</span>
+                  </a>
+                  <a className="hero-cta" href={getRoutePath('home')} onClick={handleConsultingNavigation}>
+                    피해 사실 접수
+                  </a>
                 </div>
               </div>
             </section>
