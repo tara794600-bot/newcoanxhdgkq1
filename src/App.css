@@ -1432,6 +1432,80 @@ main {
   min-height: 120px;
 }
 
+.consultation-choice-field {
+  min-width: 0;
+  margin: 0;
+  border: 1px solid rgba(99, 119, 145, 0.28);
+  border-radius: 10px;
+  background: #eef3f7;
+  color: #304056;
+  font-family: inherit;
+}
+
+.quick-form .consultation-choice-field {
+  width: 100%;
+  padding: 14px 16px;
+  background: #e4e2df;
+  text-align: left;
+}
+
+.consultation-choice-field-disabled {
+  opacity: 0.72;
+}
+
+.consultation-choice-title {
+  margin: 0 0 8px;
+  padding: 0;
+  color: #304056;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.quick-form .consultation-choice-title {
+  margin: 0 0 10px;
+  font-size: 17px;
+}
+
+.consultation-choice-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.consultation-choice-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid rgba(var(--brand-rgb), 0.24);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.64);
+  color: #304056;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.consultation-choice-option input[type='radio'] {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  accent-color: var(--brand);
+  cursor: inherit;
+}
+
+.consultation-choice-option-disabled {
+  cursor: not-allowed;
+}
+
 .consultation-privacy-agreement {
   display: flex;
   align-items: flex-start;
@@ -1557,6 +1631,7 @@ main {
   grid-template-columns:
     minmax(96px, 0.72fr)
     minmax(124px, 0.88fr)
+    minmax(154px, 1fr)
     minmax(180px, 1.8fr)
     minmax(210px, 1.28fr)
     minmax(92px, 0.72fr);
@@ -1583,6 +1658,40 @@ main {
   resize: none;
   min-height: 48px;
   height: 48px;
+}
+
+.quick-apply-form .consultation-choice-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 5px;
+  min-height: 60px;
+  padding: 7px 9px;
+}
+
+.quick-apply-form .consultation-choice-title {
+  flex: none;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.quick-apply-form .consultation-choice-options {
+  flex-wrap: nowrap;
+  gap: 5px;
+}
+
+.quick-apply-form .consultation-choice-option {
+  min-height: 30px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.quick-apply-form .consultation-choice-option input[type='radio'] {
+  width: 14px;
+  height: 14px;
 }
 
 .quick-apply-form .consultation-privacy-agreement {
@@ -1927,6 +2036,9 @@ main {
 
 .company-search-clear {
   position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   top: 50%;
   right: 10px;
   width: 34px;
@@ -1940,6 +2052,7 @@ main {
   font-size: 22px;
   line-height: 1;
   cursor: pointer;
+  text-decoration: none;
 }
 
 .company-search-clear:hover,
@@ -1972,6 +2085,9 @@ main {
 }
 
 .company-page-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 38px;
   height: 38px;
   border: 1px solid #cdd8e5;
@@ -1983,6 +2099,7 @@ main {
   font-weight: 800;
   line-height: 1;
   cursor: pointer;
+  text-decoration: none;
   transition:
     background 0.18s ease,
     border-color 0.18s ease,
@@ -1990,7 +2107,7 @@ main {
     transform 0.18s ease;
 }
 
-.company-page-button:hover:not(:disabled),
+.company-page-button:hover:not(:disabled):not(.is-disabled),
 .company-page-button:focus-visible {
   border-color: var(--brand);
   color: #1f4f76;
@@ -2007,6 +2124,12 @@ main {
 .company-page-button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.company-page-button.is-disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
 }
 
 .company-page-arrow {
@@ -2088,6 +2211,10 @@ main {
 }
 
 .company-detail-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
   border: 1px solid #cdd8e5;
   border-radius: 999px;
   background: #ffffff;
@@ -2098,6 +2225,7 @@ main {
   font-size: 14px;
   font-weight: 800;
   cursor: pointer;
+  text-decoration: none;
 }
 
 .company-detail-back:hover,
@@ -2156,6 +2284,7 @@ main {
   line-height: 1;
 }
 
+.company-detail-copy h1,
 .company-detail-copy h3 {
   margin: 18px 0 0;
   color: #1f2734;
@@ -3033,8 +3162,22 @@ main {
     padding: 11px 12px;
   }
 
+  .quick-form .consultation-choice-field {
+    padding: 11px 12px;
+  }
+
+  .quick-form .consultation-choice-title {
+    font-size: 15px;
+  }
+
   .quick-form .consultation-privacy-agreement {
     padding: 11px 12px;
+    font-size: 14px;
+  }
+
+  .consultation-choice-option {
+    min-height: 32px;
+    padding: 6px 10px;
     font-size: 14px;
   }
 
@@ -3068,8 +3211,8 @@ main {
   }
 
   .quick-apply-form {
-    min-width: 850px;
-    grid-template-columns: 118px 150px minmax(250px, 1fr) 220px 110px;
+    min-width: 1030px;
+    grid-template-columns: 118px 150px 180px minmax(250px, 1fr) 220px 110px;
     gap: 6px;
   }
 
@@ -3084,6 +3227,23 @@ main {
   .quick-apply-form textarea {
     min-height: 42px;
     height: 42px;
+  }
+
+  .quick-apply-form .consultation-choice-field {
+    min-height: 58px;
+    padding: 5px 8px;
+    gap: 4px;
+  }
+
+  .quick-apply-form .consultation-choice-title {
+    font-size: 11px;
+    line-height: 1.2;
+  }
+
+  .quick-apply-form .consultation-choice-option {
+    min-height: 27px;
+    padding: 4px 7px;
+    font-size: 11px;
   }
 
   .quick-apply-form .consultation-privacy-agreement {
@@ -3264,6 +3424,7 @@ main {
     aspect-ratio: 122 / 73;
   }
 
+  .company-detail-copy h1,
   .company-detail-copy h3 {
     margin-top: 14px;
     font-size: clamp(24px, 6.4vw, 32px);
@@ -3667,6 +3828,7 @@ main {
     font-size: 12px;
   }
 
+  .company-detail-copy h1,
   .company-detail-copy h3 {
     font-size: clamp(21px, 6vw, 27px);
   }
