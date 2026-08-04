@@ -105,14 +105,16 @@ service cloud.firestore {
           'image',
           'imageUrl',
           'createdAt',
-          'createdBy'
+          'createdBy',
+          'updatedAt'
         ])
         && hasText(data, 'name', 1, 80)
         && hasText(data, 'service', 1, 80)
         && hasText(data, 'description', 1, 2000)
         && hasImageField(data)
         && data.createdAt is timestamp
-        && data.createdBy is string;
+        && data.createdBy is string
+        && (!('updatedAt' in data) || data.updatedAt is timestamp);
     }
 
     function validCompanyCase(data) {
@@ -123,7 +125,8 @@ service cloud.firestore {
     function validCompanyCaseUpdate() {
       return hasValidCompanyCaseFields(request.resource.data)
         && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.createdBy == resource.data.createdBy;
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.updatedAt is timestamp;
     }
 
     function validPowerlinkLink(data) {
