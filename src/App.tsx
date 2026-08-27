@@ -4023,7 +4023,9 @@ function App() {
                   </>
                 ) : companyCasesLoaded ? (
                   <div className="company-detail company-detail-empty">
-                    <p>삭제되었으나 해당 내용으로 피해 보신 분들은 즉시 1551-7203으로 연락 바랍니다.</p>
+                    <p className="company-detail-deleted-message">
+                      삭제되었으나 해당 내용으로 피해 보신 분들은 즉시 1551-7203으로 연락 바랍니다.
+                    </p>
                     <a className="company-detail-back" href={ROUTE_PATHS.companies}>
                       목록으로
                     </a>
