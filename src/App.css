@@ -3889,3 +3889,7 @@ main {
     animation: none;
   }
 }
+ .company-detail-empty .company-detail-deleted-message,
+  .company-detail-deleted-message {
+    font-size: clamp(20px, 5.8vw, 26px);
+  }
