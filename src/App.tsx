@@ -81,7 +81,10 @@ type CompanyCase = {
   description: string
   image: string
   isPublic: boolean
+  isSearchBlocked: boolean
 }
+
+type CompanyCaseVisibility = 'public' | 'phone' | 'searchBlocked'
 
 type CompanyPageBootstrap =
   | {
@@ -690,9 +693,22 @@ const isCompanyCase = (value: unknown): value is CompanyCase => {
   return (
     [item.id, item.name, item.service, item.description, item.image].every(
       (field) => typeof field === 'string' && field.trim().length > 0,
-    ) && typeof item.isPublic === 'boolean'
+    ) &&
+    typeof item.isPublic === 'boolean' &&
+    typeof item.isSearchBlocked === 'boolean'
   )
 }
+
+const getCompanyCaseVisibility = (item: CompanyCase): CompanyCaseVisibility => {
+  if (!item.isPublic) {
+    return 'phone'
+  }
+
+  return item.isSearchBlocked ? 'searchBlocked' : 'public'
+}
+
+const isCompanyCaseVisibleInSiteSearch = (item: CompanyCase): boolean =>
+  item.isPublic && !item.isSearchBlocked
 
 const getInitialCompanyPageData = (): CompanyPageBootstrap | null => {
   const data = window.__COMPANY_PAGE_DATA__
@@ -1453,11 +1469,8 @@ function App() {
       ? INITIAL_COMPANY_PAGE_DATA.searchQuery
       : getRequestedCompanySearchQuery()
   const filteredCompanyCases = useMemo(
-    () =>
-      appliedCompanySearchTerm
-        ? companyCases
-        : companyCases.filter((item) => item.isPublic),
-    [appliedCompanySearchTerm, companyCases],
+    () => companyCases.filter(isCompanyCaseVisibleInSiteSearch),
+    [companyCases],
   )
   const companyPageCount = Math.max(1, companyTotalPages)
   const activeCompanyPage = Math.min(companyCurrentPage, companyPageCount)
@@ -1518,7 +1531,10 @@ function App() {
     }
 
     return companyCases
-      .filter((item) => item.isPublic && companyCaseMatchesKeyword(item, landingPowerlinkKeyword))
+      .filter(
+        (item) =>
+          isCompanyCaseVisibleInSiteSearch(item) && companyCaseMatchesKeyword(item, landingPowerlinkKeyword),
+      )
       .sort((firstItem, secondItem) => {
         const scoreDifference =
           getCompanyCaseRandomScore(firstItem.id) - getCompanyCaseRandomScore(secondItem.id)
@@ -2170,10 +2186,11 @@ function App() {
           const description = toTrimmedString(data.description)
           const image = toTrimmedString(data.image) || toTrimmedString(data.imageUrl) || logoImg
           const isPublic = data.isPublic !== false
+          const isSearchBlocked = data.isSearchBlocked === true
 
           setCompanyCases(
             name && service && description
-              ? [{ id: snapshot.id, name, service, description, image, isPublic }]
+              ? [{ id: snapshot.id, name, service, description, image, isPublic, isSearchBlocked }]
               : [],
           )
           setCompanyCasesLoaded(true)
@@ -2229,6 +2246,7 @@ function App() {
               description,
               image,
               isPublic: data.isPublic !== false,
+              isSearchBlocked: data.isSearchBlocked === true,
             }
           })
           .filter((item): item is CompanyCase => item !== null)
@@ -3111,6 +3129,7 @@ function App() {
         description,
         image,
         isPublic: true,
+        isSearchBlocked: false,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         createdBy: currentUser.uid,
@@ -3134,7 +3153,10 @@ function App() {
     }
   }
 
-  const handleToggleCompanyVisibility = async (item: CompanyCase) => {
+  const handleSetCompanyVisibility = async (
+    item: CompanyCase,
+    nextVisibility: CompanyCaseVisibility,
+  ) => {
     clearAdminFeedback()
 
     if (!isStaff || !currentUser) {
@@ -3142,20 +3164,26 @@ function App() {
       return
     }
 
+    if (getCompanyCaseVisibility(item) === nextVisibility) {
+      return
+    }
+
     setCompanyVisibilityBusyId(item.id)
 
     try {
       await updateDoc(doc(db, 'companyCases', item.id), {
-        isPublic: !item.isPublic,
+        isPublic: nextVisibility !== 'phone',
+        isSearchBlocked: nextVisibility === 'searchBlocked',
+        updatedAt: serverTimestamp(),
       })
-      setAdminNotice(
-        item.isPublic
-          ? '사기업체 정보를 비공개로 전환했습니다.'
-          : '사기업체 정보를 공개로 전환했습니다.',
-      )
+      setAdminNotice({
+        public: '사기업체 정보를 공개로 전환했습니다.',
+        phone: '사기업체 정보를 전화연결로 전환했습니다. 홈페이지 검색에서는 제외됩니다.',
+        searchBlocked: '사기업체 정보를 검색차단으로 전환했습니다. 홈페이지 검색에서는 제외됩니다.',
+      }[nextVisibility])
     } catch (error) {
       console.error(error)
-      setAdminError('사기업체 공개 상태 변경에 실패했습니다. Firebase 권한과 연결 상태를 확인해주세요.')
+      setAdminError('사기업체 노출 상태 변경에 실패했습니다. Firebase 권한과 연결 상태를 확인해주세요.')
     } finally {
       setCompanyVisibilityBusyId('')
     }
@@ -3599,38 +3627,65 @@ function App() {
                       {filteredAdminCompanyCases.length > 0 ? (
                         <>
                           <ul className="admin-item-list">
-                            {paginatedAdminCompanyCases.map((item) => (
-                              <li className="admin-item" key={item.id}>
-                                <div>
-                                  <p>{item.service}</p>
-                                  <strong>{item.name}</strong>
-                                  <span
-                                    className={`admin-item-visibility ${item.isPublic ? 'is-public' : 'is-private'}`}
-                                  >
-                                    {item.isPublic ? '공개' : '비공개'}
-                                  </span>
-                                </div>
-                                <div className="admin-item-actions">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleToggleCompanyVisibility(item)}
-                                    disabled={companyVisibilityBusyId === item.id}
-                                  >
-                                    {companyVisibilityBusyId === item.id
-                                      ? '변경 중'
-                                      : item.isPublic
-                                        ? '비공개'
-                                        : '공개'}
-                                  </button>
-                                  <button type="button" onClick={() => handleStartEditCompanyCase(item)}>
-                                    수정
-                                  </button>
-                                  <button type="button" onClick={() => handleDeleteCompanyCase(item.id, item.image)}>
-                                    삭제
-                                  </button>
-                                </div>
-                              </li>
-                            ))}
+                            {paginatedAdminCompanyCases.map((item) => {
+                              const visibility = getCompanyCaseVisibility(item)
+                              const visibilityBusy = companyVisibilityBusyId === item.id
+
+                              return (
+                                <li className="admin-item" key={item.id}>
+                                  <div>
+                                    <p>{item.service}</p>
+                                    <strong>{item.name}</strong>
+                                    <span
+                                      className={`admin-item-visibility ${
+                                        visibility === 'searchBlocked' ? 'is-search-blocked' : `is-${visibility}`
+                                      }`}
+                                    >
+                                      {{
+                                        public: '공개',
+                                        phone: '전화연결',
+                                        searchBlocked: '검색차단',
+                                      }[visibility]}
+                                    </span>
+                                  </div>
+                                  <div className="admin-item-actions">
+                                    {(
+                                      [
+                                        ['public', '공개', '홈페이지 목록과 검색에 노출'],
+                                        ['phone', '전화연결', '홈페이지 검색에서 숨기고 상세 페이지에 전화 안내 노출'],
+                                        ['searchBlocked', '검색차단', '홈페이지 검색에서 숨기고 상세 페이지는 정상 노출'],
+                                      ] as const
+                                    ).map(([nextVisibility, label, title]) => (
+                                      <button
+                                        type="button"
+                                        className={visibility === nextVisibility ? 'is-active' : ''}
+                                        onClick={() => handleSetCompanyVisibility(item, nextVisibility)}
+                                        disabled={visibilityBusy}
+                                        aria-pressed={visibility === nextVisibility}
+                                        title={title}
+                                        key={nextVisibility}
+                                      >
+                                        {visibilityBusy && visibility === nextVisibility ? '변경 중' : label}
+                                      </button>
+                                    ))}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleStartEditCompanyCase(item)}
+                                      disabled={visibilityBusy}
+                                    >
+                                      수정
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteCompanyCase(item.id, item.image)}
+                                      disabled={visibilityBusy}
+                                    >
+                                      삭제
+                                    </button>
+                                  </div>
+                                </li>
+                              )
+                            })}
                           </ul>
 
                           {shouldShowAdminCompanyPagination
@@ -4118,6 +4173,9 @@ function App() {
                       <br />
                       해당 내용으로 사칭 피해를 보신 분들은 즉시 1551-7203으로 연락 바랍니다.
                     </p>
+                    <a className="company-detail-call" href="tel:15517203">
+                      전화연결
+                    </a>
                     <a className="company-detail-back" href={ROUTE_PATHS.companies}>
                       목록으로
                     </a>
