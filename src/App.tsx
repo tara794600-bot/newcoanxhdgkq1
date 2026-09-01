@@ -1009,6 +1009,20 @@ const getCompanyCaseRandomScore = (id: string): number => {
   return score >>> 0
 }
 
+const shuffleCompanyCases = (items: CompanyCase[]): CompanyCase[] => {
+  const shuffledItems = [...items]
+
+  for (let index = shuffledItems.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1))
+    ;[shuffledItems[index], shuffledItems[randomIndex]] = [
+      shuffledItems[randomIndex],
+      shuffledItems[index],
+    ]
+  }
+
+  return shuffledItems
+}
+
 const getPaginationItems = (totalPages: number, currentPage: number): PaginationItem[] => {
   if (totalPages <= 7) {
     return Array.from({ length: totalPages }, (_, index) => index + 1)
@@ -2188,7 +2202,10 @@ function App() {
     }
 
     setCompanyCasesLoaded(false)
-    const companyCasesQuery = query(collection(db, 'companyCases'), orderBy('createdAt', 'desc'))
+    const companyCasesQuery =
+      route === 'companies'
+        ? query(collection(db, 'companyCases'))
+        : query(collection(db, 'companyCases'), orderBy('createdAt', 'desc'))
 
     const unsubscribe = onSnapshot(
       companyCasesQuery,
@@ -2216,7 +2233,7 @@ function App() {
           })
           .filter((item): item is CompanyCase => item !== null)
 
-        setCompanyCases(mappedCases)
+        setCompanyCases(route === 'companies' ? shuffleCompanyCases(mappedCases) : mappedCases)
         setCompanyCasesLoaded(true)
       },
       (error) => {
