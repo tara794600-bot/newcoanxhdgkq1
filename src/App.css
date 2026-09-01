@@ -409,6 +409,23 @@
   font-size: 12px;
 }
 
+.admin-item .admin-item-visibility {
+  display: inline-flex;
+  margin-top: 5px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.admin-item-visibility.is-public {
+  background: #25834b;
+}
+
+.admin-item-visibility.is-private {
+  background: #7a8492;
+}
+
 .admin-item-url {
   word-break: break-all;
 }
@@ -440,6 +457,11 @@
   font-weight: 700;
   cursor: pointer;
   background: linear-gradient(135deg, #4e5f78 0%, #2d3c53 100%);
+}
+
+.admin-item button:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 
 .admin-pagination {

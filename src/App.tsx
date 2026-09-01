@@ -80,6 +80,7 @@ type CompanyCase = {
   service: string
   description: string
   image: string
+  isPublic: boolean
 }
 
 type CompanyPageBootstrap =
@@ -686,8 +687,10 @@ const isCompanyCase = (value: unknown): value is CompanyCase => {
   }
 
   const item = value as Partial<CompanyCase>
-  return [item.id, item.name, item.service, item.description, item.image].every(
-    (field) => typeof field === 'string' && field.trim().length > 0,
+  return (
+    [item.id, item.name, item.service, item.description, item.image].every(
+      (field) => typeof field === 'string' && field.trim().length > 0,
+    ) && typeof item.isPublic === 'boolean'
   )
 }
 
@@ -993,7 +996,18 @@ const lawyerProfiles: LawyerProfile[] = [
 const toTrimmedString = (value: unknown): string => (typeof value === 'string' ? value.trim() : '')
 const KEYWORD_COMPANY_CASE_LIMIT = 8
 const ADMIN_ITEMS_PER_PAGE = 30
+const COMPANY_CASE_RANDOM_SEED = Math.floor(Math.random() * 0x1_0000_0000)
 type PaginationItem = number | 'ellipsis-start' | 'ellipsis-end'
+
+const getCompanyCaseRandomScore = (id: string): number => {
+  let score = COMPANY_CASE_RANDOM_SEED
+
+  for (let index = 0; index < id.length; index += 1) {
+    score = Math.imul(score ^ id.charCodeAt(index), 16_777_619)
+  }
+
+  return score >>> 0
+}
 
 const getPaginationItems = (totalPages: number, currentPage: number): PaginationItem[] => {
   if (totalPages <= 7) {
@@ -1349,6 +1363,7 @@ function App() {
   const [companyDescriptionInput, setCompanyDescriptionInput] = useState('')
   const [companyImageFile, setCompanyImageFile] = useState<File | null>(null)
   const [companyUploadBusy, setCompanyUploadBusy] = useState(false)
+  const [companyVisibilityBusyId, setCompanyVisibilityBusyId] = useState('')
   const [companyEditingCaseId, setCompanyEditingCaseId] = useState('')
   const [companySearchInput, setCompanySearchInput] = useState(() =>
     INITIAL_COMPANY_PAGE_DATA?.kind === 'list'
@@ -1423,7 +1438,13 @@ function App() {
     INITIAL_COMPANY_PAGE_DATA?.kind === 'list'
       ? INITIAL_COMPANY_PAGE_DATA.searchQuery
       : getRequestedCompanySearchQuery()
-  const filteredCompanyCases = companyCases
+  const filteredCompanyCases = useMemo(
+    () =>
+      appliedCompanySearchTerm
+        ? companyCases
+        : companyCases.filter((item) => item.isPublic),
+    [appliedCompanySearchTerm, companyCases],
+  )
   const companyPageCount = Math.max(1, companyTotalPages)
   const activeCompanyPage = Math.min(companyCurrentPage, companyPageCount)
   const paginatedCompanyCases = filteredCompanyCases
@@ -1483,7 +1504,13 @@ function App() {
     }
 
     return companyCases
-      .filter((item) => companyCaseMatchesKeyword(item, landingPowerlinkKeyword))
+      .filter((item) => item.isPublic && companyCaseMatchesKeyword(item, landingPowerlinkKeyword))
+      .sort((firstItem, secondItem) => {
+        const scoreDifference =
+          getCompanyCaseRandomScore(firstItem.id) - getCompanyCaseRandomScore(secondItem.id)
+
+        return scoreDifference || firstItem.id.localeCompare(secondItem.id, 'ko-KR')
+      })
       .slice(0, KEYWORD_COMPANY_CASE_LIMIT)
   }, [companyCases, landingPowerlinkKeyword])
   const keywordSectionCompanyCases = useMemo(() => {
@@ -2128,10 +2155,11 @@ function App() {
           const service = toTrimmedString(data.service)
           const description = toTrimmedString(data.description)
           const image = toTrimmedString(data.image) || toTrimmedString(data.imageUrl) || logoImg
+          const isPublic = data.isPublic !== false
 
           setCompanyCases(
             name && service && description
-              ? [{ id: snapshot.id, name, service, description, image }]
+              ? [{ id: snapshot.id, name, service, description, image, isPublic }]
               : [],
           )
           setCompanyCasesLoaded(true)
@@ -2183,6 +2211,7 @@ function App() {
               service,
               description,
               image,
+              isPublic: data.isPublic !== false,
             }
           })
           .filter((item): item is CompanyCase => item !== null)
@@ -3064,6 +3093,7 @@ function App() {
         service,
         description,
         image,
+        isPublic: true,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         createdBy: currentUser.uid,
@@ -3084,6 +3114,33 @@ function App() {
       )
     } finally {
       setCompanyUploadBusy(false)
+    }
+  }
+
+  const handleToggleCompanyVisibility = async (item: CompanyCase) => {
+    clearAdminFeedback()
+
+    if (!isStaff || !currentUser) {
+      setAdminError('관리자 로그인 후 이용해주세요.')
+      return
+    }
+
+    setCompanyVisibilityBusyId(item.id)
+
+    try {
+      await updateDoc(doc(db, 'companyCases', item.id), {
+        isPublic: !item.isPublic,
+      })
+      setAdminNotice(
+        item.isPublic
+          ? '사기업체 정보를 비공개로 전환했습니다.'
+          : '사기업체 정보를 공개로 전환했습니다.',
+      )
+    } catch (error) {
+      console.error(error)
+      setAdminError('사기업체 공개 상태 변경에 실패했습니다. Firebase 권한과 연결 상태를 확인해주세요.')
+    } finally {
+      setCompanyVisibilityBusyId('')
     }
   }
 
@@ -3530,8 +3587,24 @@ function App() {
                                 <div>
                                   <p>{item.service}</p>
                                   <strong>{item.name}</strong>
+                                  <span
+                                    className={`admin-item-visibility ${item.isPublic ? 'is-public' : 'is-private'}`}
+                                  >
+                                    {item.isPublic ? '공개' : '비공개'}
+                                  </span>
                                 </div>
                                 <div className="admin-item-actions">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleCompanyVisibility(item)}
+                                    disabled={companyVisibilityBusyId === item.id}
+                                  >
+                                    {companyVisibilityBusyId === item.id
+                                      ? '변경 중'
+                                      : item.isPublic
+                                        ? '비공개'
+                                        : '공개'}
+                                  </button>
                                   <button type="button" onClick={() => handleStartEditCompanyCase(item)}>
                                     수정
                                   </button>
@@ -3984,7 +4057,7 @@ function App() {
 
             <div className="section-wrap companies-grid-wrap">
               {selectedCompanyCaseId ? (
-                selectedCompanyCase ? (
+                selectedCompanyCase?.isPublic ? (
                   <>
                     <article className="company-detail">
                       <a className="company-detail-back" href={ROUTE_PATHS.companies}>
@@ -4024,7 +4097,9 @@ function App() {
                 ) : companyCasesLoaded ? (
                   <div className="company-detail company-detail-empty">
                     <p className="company-detail-deleted-message">
-                      삭제되었으나 해당 내용으로 피해 보신 분들은 즉시 1551-7203으로 연락 바랍니다.
+                      현재 페이지는 삭제되었습니다.
+                      <br />
+                      해당 내용으로 사칭 피해를 보신 분들은 즉시 1551-7203으로 연락 바랍니다.
                     </p>
                     <a className="company-detail-back" href={ROUTE_PATHS.companies}>
                       목록으로
