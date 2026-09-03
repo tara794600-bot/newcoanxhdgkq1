@@ -2377,29 +2377,30 @@ main {
   cursor: pointer;
 }
 
-.company-detail-kakao-section {
+.company-detail-contact-section {
   margin-top: 28px;
+  display: grid;
+  gap: 12px;
 }
 
-.company-detail-kakao-banner {
+.company-detail-contact-banner {
   border-radius: 10px;
   overflow: hidden;
   display: block;
-  background: #f9df20;
   text-decoration: none;
   transition:
     transform 0.2s ease,
     box-shadow 0.2s ease;
 }
 
-.company-detail-kakao-banner img {
+.company-detail-contact-banner img {
   width: 100%;
   height: auto;
   display: block;
 }
 
-.company-detail-kakao-banner:hover,
-.company-detail-kakao-banner:focus-visible {
+.company-detail-contact-banner:hover,
+.company-detail-contact-banner:focus-visible {
   transform: translateY(-1px);
   box-shadow: 0 16px 26px rgba(50, 43, 0, 0.16);
 }
@@ -3502,8 +3503,9 @@ main {
     font-size: 15px;
   }
 
-  .company-detail-kakao-section {
+  .company-detail-contact-section {
     margin-top: 20px;
+    gap: 10px;
   }
 
   .lawyers-page {
@@ -3896,7 +3898,7 @@ main {
     font-size: 13px;
   }
 
-  .company-detail-kakao-banner {
+  .company-detail-contact-banner {
     border-radius: 8px;
   }
 
