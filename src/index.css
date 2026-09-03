@@ -8,6 +8,7 @@
 
 html {
   scroll-behavior: smooth;
+  color-scheme: only light;
   background: #fbf7ef;
 }
 
