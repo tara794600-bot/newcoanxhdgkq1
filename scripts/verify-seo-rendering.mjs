@@ -7,7 +7,7 @@ import {
 } from '../api/company-page.js'
 import { renderSitemap } from '../api/sitemap.js'
 
-const indexHtml = await readFile(new URL('../dist/index.html', import.meta.url), 'utf8')
+const indexHtml = await readFile(new URL('../dist/app-shell.html', import.meta.url), 'utf8')
 const sampleItems = [
   {
     id: 'sample-one',

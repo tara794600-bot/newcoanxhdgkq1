@@ -6,7 +6,7 @@ import { getRequestContentSite } from '../server/content-site.js'
 import { buildCompaniesPageHtml, buildCompanyCasePageHtml, buildNotFoundPageHtml } from '../api/company-page.js'
 import { renderSitemap } from '../api/sitemap.js'
 
-const html = await readFile(new URL('../dist/index.html', import.meta.url), 'utf8')
+const html = await readFile(new URL('../dist/app-shell.html', import.meta.url), 'utf8')
 const original = Object.freeze({
   id: 'shared-post', name: '샘플 업체', service: '투자사기',
   description: '원문 첫 줄입니다.\n두 번째 줄의 사실관계를 그대로 보존합니다.',

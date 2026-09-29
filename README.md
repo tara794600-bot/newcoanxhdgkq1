@@ -1,5 +1,16 @@
 # React + TypeScript + Vite
 
+## 홈페이지와 변호사 소개의 초기 HTML
+
+홈페이지(`/`)와 변호사 소개(`/lawyers`)는 `npm run build` 실행 시 실제 React 화면을 HTML로 생성합니다. JavaScript가 실행되기 전에도 본문, 제목, 내부 링크와 변호사 프로필을 읽을 수 있습니다. 홈페이지의 타이핑 제목과 첫 피해회복 안내문도 완성된 문장으로 포함합니다.
+
+- `src/entry-server.tsx`와 `scripts/prerender.mjs`에서 생성하며, 화면과 메타 정보는 클라이언트와 공유합니다.
+- `dist/prerender/{site1,site2,site3}/`에 도메인별 HTML을 생성하고 `api/site-page.js`가 요청 Host에 맞는 파일을 제공합니다.
+- 로컬/미리보기 기본 도메인은 한글 도메인(`site3`)이며 `VITE_SITE_ID` 또는 `VITE_SITE_URL`로 변경할 수 있습니다. 대표 URL과 구조화 데이터는 동일한 퓨니코드 주소를 사용합니다.
+- 게시판 API는 별도의 빈 `dist/app-shell.html`을 사용하므로 홈페이지 본문이 상세 페이지에 섞이지 않습니다.
+- 본문이나 프로필 변경 후에는 다시 빌드·배포해야 합니다. 운영 사이트 적용에는 재배포가 필요합니다.
+- 검증: `npm run build`, `npm run lint`, `npm run verify:seo`.
+
 ## 세 홈페이지 게시글 자동 변환
 
 관리자에서 업체명·유형·설명을 한 번만 작성하면 접속 도메인별 제목과 설명을 자동으로 표시합니다. 작성·수정 폼의 **세 홈페이지 자동 변환 미리보기**에서 결과를 확인할 수 있습니다.

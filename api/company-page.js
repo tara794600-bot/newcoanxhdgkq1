@@ -81,6 +81,8 @@ const getFirebaseApp = () => {
 const getIndexHtml = async () => {
   const apiDir = path.dirname(fileURLToPath(import.meta.url))
   const candidates = [
+    path.join(process.cwd(), 'dist', 'app-shell.html'),
+    path.join(apiDir, '..', 'dist', 'app-shell.html'),
     path.join(process.cwd(), 'dist', 'index.html'),
     path.join(apiDir, '..', 'dist', 'index.html'),
   ]
