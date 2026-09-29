@@ -278,6 +278,48 @@
   min-height: 94px;
 }
 
+.admin-content-preview,
+.admin-site-content-card {
+  min-width: 0;
+  margin: 8px 0 0;
+  padding: 12px;
+  border: 1px solid rgba(99, 119, 145, 0.3);
+  border-radius: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.admin-content-preview summary,
+.admin-site-content-card h4 {
+  margin: 0;
+  color: #206647;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.admin-content-preview summary {
+  cursor: pointer;
+}
+
+.admin-site-description {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.admin-site-content-card strong {
+  overflow-wrap: anywhere;
+}
+
+.admin-site-content-card {
+  background: rgba(var(--brand-rgb), 0.04);
+}
+
+.admin-site-domain {
+  color: #677587;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .admin-form button {
   margin-top: 4px;
   border: none;
@@ -3954,9 +3996,3 @@ main {
   .company-detail-deleted-message {
     font-size: clamp(20px, 5.8vw, 26px);
   }
-.companies-grid .company-card-filled {
-  border-color: transparent;
-  background:
-    linear-gradient(#f7f9fc, #f7f9fc) padding-box,
-    linear-gradient(135deg, #b3976b 0%, #f1dfb5 24%, #b89b6c 48%, #f8edce 72%, #b3976b 100%) border-box;
-}

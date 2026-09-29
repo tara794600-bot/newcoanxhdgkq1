@@ -38,6 +38,8 @@ import law2Img from './assets/law2.png'
 import law3Img from './assets/law3.png'
 import bannerImg from './assets/banner-green.png'
 import { auth, db, isFirebaseConfigured, storage } from './firebase'
+import { CompanyContentPreview } from './components/CompanyContentPreview'
+import { getContentSite, resolveCompanyContent } from '../shared/company-content.js'
 import './App.css'
 
 type PageRoute = 'home' | 'lawyers' | 'companies' | 'admin'
@@ -224,10 +226,12 @@ const ROUTE_PATHS: Record<PageRoute, string> = {
   admin: '/admin',
 }
 
-const SITE_BASE_URL = (
-  (import.meta.env.VITE_SITE_URL as string | undefined)?.trim().replace(/\/+$/, '') ||
-  'https://www.naranfintech사기업체.kr'
-)
+const CONTENT_SITE = getContentSite({
+  hostname: window.location.hostname,
+  siteId: import.meta.env.VITE_SITE_ID,
+  siteUrl: import.meta.env.VITE_SITE_URL || 'https://www.naranfintech사기업체.kr',
+})
+const SITE_BASE_URL = CONTENT_SITE.url
 const SEARCH_RESULT_SITE_NAME = '법무법인나란'
 const SEARCH_RESULT_SECTION_NAME = '핀테크전문'
 
@@ -1363,6 +1367,8 @@ function App() {
   const [isStaffCheckPending, setIsStaffCheckPending] = useState(isFirebaseConfigured)
 
   const [rollingCases, setRollingCases] = useState<RollingCase[]>([])
+  // Admin forms edit the stored original, never a domain-specific rendering.
+  const [adminCompanyCases, setAdminCompanyCases] = useState<CompanyCase[]>([])
   const [companyCases, setCompanyCases] = useState<CompanyCase[]>(() => {
     if (INITIAL_COMPANY_PAGE_DATA?.kind === 'detail') {
       return [INITIAL_COMPANY_PAGE_DATA.item]
@@ -1484,15 +1490,15 @@ function App() {
   const normalizedAdminCompanySearchTerm = adminCompanySearchInput.trim().toLocaleLowerCase('ko-KR')
   const filteredAdminCompanyCases = useMemo(() => {
     if (!normalizedAdminCompanySearchTerm) {
-      return companyCases
+      return adminCompanyCases
     }
 
-    return companyCases.filter((item) =>
+    return adminCompanyCases.filter((item) =>
       [item.name, item.service].some((value) =>
         value.toLocaleLowerCase('ko-KR').includes(normalizedAdminCompanySearchTerm),
       ),
     )
-  }, [companyCases, normalizedAdminCompanySearchTerm])
+  }, [adminCompanyCases, normalizedAdminCompanySearchTerm])
   const adminRollingPageCount = Math.max(1, Math.ceil(rollingCases.length / ADMIN_ITEMS_PER_PAGE))
   const activeAdminRollingPage = Math.min(adminRollingCurrentPage, adminRollingPageCount)
   const paginatedAdminRollingCases = useMemo(() => {
@@ -2181,7 +2187,7 @@ function App() {
             return
           }
 
-          const data = snapshot.data()
+          const data = resolveCompanyContent(snapshot.data(), CONTENT_SITE.id)
           const name = toTrimmedString(data.name)
           const service = toTrimmedString(data.service)
           const description = toTrimmedString(data.description)
@@ -2252,12 +2258,17 @@ function App() {
           })
           .filter((item): item is CompanyCase => item !== null)
 
-        setCompanyCases(route === 'companies' ? shuffleCompanyCases(mappedCases) : mappedCases)
+        if (route === 'admin') {
+          setAdminCompanyCases(mappedCases)
+        }
+        const publicCases = mappedCases.map((item) => resolveCompanyContent(item, CONTENT_SITE.id))
+        setCompanyCases(route === 'companies' ? shuffleCompanyCases(publicCases) : publicCases)
         setCompanyCasesLoaded(true)
       },
       (error) => {
         console.error(error)
         setCompanyCases([])
+        setAdminCompanyCases([])
         setCompanyCasesLoaded(true)
       },
     )
@@ -3056,7 +3067,7 @@ function App() {
     const description = companyDescriptionInput.trim()
     const imageFile = companyImageFile
     const editingCase = companyEditingCaseId
-      ? companyCases.find((item) => item.id === companyEditingCaseId) ?? null
+      ? adminCompanyCases.find((item) => item.id === companyEditingCaseId) ?? null
       : null
 
     if (companyEditingCaseId && !editingCase) {
@@ -3559,6 +3570,11 @@ function App() {
                       required
                     />
                   </label>
+                  <CompanyContentPreview
+                    name={companyNameInput}
+                    service={companyServiceInput}
+                    description={companyDescriptionInput}
+                  />
                   <label>
                     {companyEditingCaseId ? '이미지 파일 (선택)' : '이미지 파일'}
                     <input
@@ -3596,13 +3612,13 @@ function App() {
                 <div className="admin-list-wrap">
                   <div className="admin-list-title-row">
                     <h4>등록된 사기업체 정보</h4>
-                    {companyCases.length > 0 ? (
+                    {adminCompanyCases.length > 0 ? (
                       <span>
-                        {filteredAdminCompanyCases.length}/{companyCases.length}
+                        {filteredAdminCompanyCases.length}/{adminCompanyCases.length}
                       </span>
                     ) : null}
                   </div>
-                  {companyCases.length > 0 ? (
+                  {adminCompanyCases.length > 0 ? (
                     <>
                       <label className="admin-list-search">
                         <span className="visually-hidden">등록된 사기업체 검색</span>
