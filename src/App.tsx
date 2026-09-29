@@ -23,23 +23,24 @@ import {
 } from 'firebase/firestore'
 import { deleteObject, getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage'
 import heroImg from './assets/hero.png'
-import picImg from './assets/pic-green.png'
-import icon1Img from './assets/icon1-green.png'
-import icon2Img from './assets/icon2-green.png'
-import icon3Img from './assets/icon3-green.png'
-import icon4Img from './assets/icon4-green.png'
-import ssImg from './assets/ss-green.png'
+import picImg from './assets/pic.png'
+import icon1Img from './assets/icon1.png'
+import icon2Img from './assets/icon2.png'
+import icon3Img from './assets/icon3.png'
+import icon4Img from './assets/icon4.png'
+import ssImg from './assets/ss.png'
 import logoImg from './assets/logo.png'
 import kakaoIconImg from './assets/kakao.png'
-import kakaoConnectImg from './assets/카톡 연결.png'
-import phoneConnectImg from './assets/전화 연결.png'
+import kakaoConnectBannerImg from './assets/카톡 연결.png'
+import phoneConnectBannerImg from './assets/전화 연결.png'
 import law1Img from './assets/law1.png'
 import law2Img from './assets/law2.png'
 import law3Img from './assets/law3.png'
-import bannerImg from './assets/banner-green.png'
+import bannerImg from './assets/banner.png'
 import { auth, db, isFirebaseConfigured, storage } from './firebase'
 import { CompanyContentPreview } from './components/CompanyContentPreview'
 import { getContentSite, resolveCompanyContent } from '../shared/company-content.js'
+import { DEFAULT_SEO_KEYWORDS, SEO_META_BY_ROUTE } from '../shared/page-meta.js'
 import './App.css'
 
 type PageRoute = 'home' | 'lawyers' | 'companies' | 'admin'
@@ -77,6 +78,8 @@ type RollingDisplayCase = RollingCase & {
 
 type RollingDisplayItem = RollingImageCard | RollingDisplayCase
 
+type CompanyVisibility = 'public' | 'phone' | 'searchBlocked'
+
 type CompanyCase = {
   id: string
   name: string
@@ -86,8 +89,6 @@ type CompanyCase = {
   isPublic: boolean
   isSearchBlocked: boolean
 }
-
-type CompanyCaseVisibility = 'public' | 'phone' | 'searchBlocked'
 
 type CompanyPageBootstrap =
   | {
@@ -134,26 +135,26 @@ const ADMIN_INVITE_CODE = (
   import.meta.env.VITE_STAFF_INVITE_CODE ??
   ''
 ).trim()
-
 const CONSULTATION_API_URL = (import.meta.env.VITE_CONSULTATION_API_URL ?? '').trim()
 const POWERLINK_GENERATE_API_URL = (import.meta.env.VITE_POWERLINK_GENERATE_API_URL ?? '').trim()
 const KAKAO_OPEN_CHAT_URL = 'http://pf.kakao.com/_txdqSn/chat'
 const CONTACT_PHONE_NUMBER = '1551-7202'
 const CONTACT_PHONE_TEL = `tel:${CONTACT_PHONE_NUMBER.replace(/[^0-9+]/g, '')}`
+const COMPANY_PHONE_NUMBER = '1551-7203'
+const COMPANY_PHONE_TEL = `tel:${COMPANY_PHONE_NUMBER.replace(/[^0-9+]/g, '')}`
 const GOOGLE_ADS_ID = 'AW-16949684264'
 const GOOGLE_ADS_CONVERSION_SEND_TO = 'AW-16949684264/I91fCL6M-qMcEKjQnpI_'
 const GOOGLE_ADS_SCRIPT_ID = 'google-ads-gtag-script'
-const COMPANY_CASES_PER_PAGE = 40
 const COMPANY_SEARCH_MAX_LENGTH = 120
+const HERO_TYPING_TEXT = '수많은 사기 피해 대응 경험,\n그 차이를 증명합니다.'
 const COMPANIES_BANNER_TYPING_TEXT_DESKTOP =
   '경찰신고만으로는 피해금을 되찾을 수 없습니다.\n지금 바로 대응해 피해금 회복이 가능합니다.'
 const COMPANIES_BANNER_TYPING_TEXT_MOBILE =
   '경찰신고만으로는\n피해금을 되찾을 수 없습니다.\n지금 바로 대응해\n피해금 회복이 가능합니다.'
-const getHeroTypingText = (keyword: string): string =>
-  `${keyword},\n나란을 만난 순간부터\n해결의 길은 시작됩니다`
-const RECOVERY_TYPING_MESSAGES = [
-  '사기 피해 회복은 속도전입니다. 단 1분의 망설임이 평생의 후회가 되지 않도록, 금융사기 전담팀이 지금 즉시 가동되어 당신의 잃어버린 돈을 되찾기 위한 추적을 시작합니다.',
-  '리딩방, 비상장 주식, 코인 사기 조직들은 치밀합니다. 하지만 그들이 돈을 빼돌리는 경로를 정확히 짚어낼 수 있다면 회수의 길은 열립니다. 3만 6천 건이 넘는 상담 데이터가 말해줍니다.',
+const HERO_STAT_ITEMS = [
+  { label: '누적 상담건수', value: 36489 },
+  { label: '누적 해결 건수', value: 999 },
+  { label: '일 평균 상담건수', value: 146 },
 ] as const
 
 const getTypingDelay = (currentCharacter: string): number => {
@@ -166,18 +167,6 @@ const getTypingDelay = (currentCharacter: string): number => {
   }
 
   return 105
-}
-
-const getLongTypingDelay = (currentCharacter: string): number => {
-  if (currentCharacter === ' ' || currentCharacter === '\u00A0') {
-    return 70
-  }
-
-  if (/[,.]/.test(currentCharacter)) {
-    return 320
-  }
-
-  return 120
 }
 
 const normalizePowerlinkPathPrefix = (prefix: string): string => {
@@ -227,24 +216,15 @@ const ROUTE_PATHS: Record<PageRoute, string> = {
 }
 
 const CONTENT_SITE = getContentSite({
-  hostname: window.location.hostname,
+  hostname: typeof window === 'undefined' ? '' : window.location.hostname,
   siteId: import.meta.env.VITE_SITE_ID,
-  siteUrl: import.meta.env.VITE_SITE_URL || 'https://www.naranfintech사기업체.kr',
+  siteUrl: import.meta.env.VITE_SITE_URL || 'https://www.naranfintechnews.co.kr',
 })
 const SITE_BASE_URL = CONTENT_SITE.url
 const SEARCH_RESULT_SITE_NAME = '법무법인나란'
 const SEARCH_RESULT_SECTION_NAME = '핀테크전문'
 
-const DEFAULT_SEO_KEYWORDS = [
-  '법무법인 나란',
-  '투자사기 변호사',
-  '코인사기 변호사',
-  '금융사기',
-  '로맨스스캠',
-  '부업사기',
-  '피해회복',
-  '무료상담',
-].join(', ')
+
 
 const NAVER_TRACKING_KEYWORD_PARAMS = [
   'n_keyword',
@@ -325,33 +305,7 @@ const getTrackableQueryString = (search: string, hash: string): string => {
   return queryParts.length > 0 ? `?${queryParts.join('&')}` : ''
 }
 
-const SEO_META_BY_ROUTE: Record<PageRoute, SeoMeta> = {
-  home: {
-    title: '법무법인 나란 | 금융사기 피해회복 상담',
-    description:
-      '법무법인 나란은 투자사기, 코인사기, 로맨스스캠, 부업사기 등 금융사기 피해회복 상담을 신속하게 지원합니다.',
-    keywords: DEFAULT_SEO_KEYWORDS,
-    path: '/',
-  },
-  lawyers: {
-    title: '변호사 소개 | 법무법인 나란',
-    description: '법무법인 나란의 형사, 부동산, 금융사기 피해회복 분야 변호사 프로필과 주요 경력을 확인하세요.',
-    keywords: `법무법인 나란 변호사, 서지원 변호사, 최지연 변호사, 정이든 변호사, ${DEFAULT_SEO_KEYWORDS}`,
-    path: '/lawyers',
-  },
-  companies: {
-    title: '사기업체 게시판 | 법무법인 나란',
-    description: '투자사기, 부업사기, 로맨스스캠 등 실제 사기업체 사례를 게시판 형식으로 확인하고 피해회복 상담을 신청하세요.',
-    keywords: `사기업체 게시판, 사기업체 사례 게시판, 사기 업체 게시판, 사기 피해 게시판, 사기업체 목록, 사기 피해 사례, 피해회복 상담, ${DEFAULT_SEO_KEYWORDS}`,
-    path: '/companies',
-  },
-  admin: {
-    title: '관리자 페이지 | 법무법인 나란',
-    description: '법무법인 나란 관리자 전용 페이지입니다.',
-    keywords: '법무법인 나란 관리자',
-    path: '/admin',
-  },
-}
+
 
 const toAbsoluteSiteUrl = (path: string): string => {
   try {
@@ -617,11 +571,6 @@ const normalizePathname = (pathname: string): string => {
   return withoutTrailingSlash || '/'
 }
 
-const isAdminRoutePathname = (pathname: string): boolean => {
-  const cleaned = normalizePathname(pathname).toLowerCase()
-  return cleaned === ROUTE_PATHS.admin || cleaned.startsWith(`${ROUTE_PATHS.admin}/`)
-}
-
 const resolveRoute = (pathname: string): PageRoute => {
   const cleaned = normalizePathname(pathname).toLowerCase()
 
@@ -633,7 +582,7 @@ const resolveRoute = (pathname: string): PageRoute => {
     return 'companies'
   }
 
-  if (isAdminRoutePathname(cleaned)) {
+  if (cleaned === '/admin' || cleaned.startsWith('/admin/')) {
     return 'admin'
   }
 
@@ -676,6 +625,7 @@ const getCompaniesPagePath = (page: number, searchQuery = ''): string => {
 }
 
 const getRequestedCompanyPage = (): number => {
+  if (typeof window === 'undefined') return 1
   const rawPage = new URLSearchParams(window.location.search).get('page')
 
   if (!rawPage || !/^\d+$/.test(rawPage)) {
@@ -687,7 +637,8 @@ const getRequestedCompanyPage = (): number => {
 }
 
 const getRequestedCompanySearchQuery = (): string =>
-  (new URLSearchParams(window.location.search).get('q') ?? '').trim().slice(0, COMPANY_SEARCH_MAX_LENGTH)
+  (typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('q') ?? '')
+    .trim().slice(0, COMPANY_SEARCH_MAX_LENGTH)
 
 const isCompanyCase = (value: unknown): value is CompanyCase => {
   if (!value || typeof value !== 'object') {
@@ -704,18 +655,8 @@ const isCompanyCase = (value: unknown): value is CompanyCase => {
   )
 }
 
-const getCompanyCaseVisibility = (item: CompanyCase): CompanyCaseVisibility => {
-  if (!item.isPublic) {
-    return 'phone'
-  }
-
-  return item.isSearchBlocked ? 'searchBlocked' : 'public'
-}
-
-const isCompanyCaseVisibleInSiteSearch = (item: CompanyCase): boolean =>
-  item.isPublic && !item.isSearchBlocked
-
 const getInitialCompanyPageData = (): CompanyPageBootstrap | null => {
+  if (typeof window === 'undefined') return null
   const data = window.__COMPANY_PAGE_DATA__
 
   if (!data || typeof data !== 'object') {
@@ -814,7 +755,10 @@ const detectVisitSource = (params: {
 
 let googleAdsTagConfigured = false
 
-const isGoogleAdsTrackingAllowed = (): boolean => !isAdminRoutePathname(window.location.pathname)
+const isGoogleAdsTrackingAllowed = (): boolean => {
+  const pathname = normalizePathname(window.location.pathname).toLowerCase()
+  return pathname !== '/admin' && !pathname.startsWith('/admin/')
+}
 
 const removeGoogleAdsTag = () => {
   document.getElementById(GOOGLE_ADS_SCRIPT_ID)?.remove()
@@ -876,6 +820,14 @@ const rollingImageModules = {
   }),
 }
 
+const heroDeckImageModules = import.meta.glob<string>(
+  './assets/새 폴더/*.{png,jpg,jpeg,webp,avif,gif,PNG,JPG,JPEG,WEBP,AVIF,GIF}',
+  {
+    eager: true,
+    import: 'default',
+  },
+)
+
 const toRollingImageName = (path: string): string => {
   const fileName = path.split('/').pop()?.replace(/\.[^.]+$/, '') ?? '기본 롤링 이미지'
   return fileName.replace(/[-_]+/g, ' ').trim() || '기본 롤링 이미지'
@@ -895,6 +847,59 @@ const rollingFolderDefaultCards: RollingImageCard[] = Object.entries(rollingImag
   })
 
 const defaultRollingCards = rollingFolderDefaultCards
+
+const heroDeckCards: RollingImageCard[] = Object.entries(heroDeckImageModules)
+  .sort(([firstPath], [secondPath]) => firstPath.localeCompare(secondPath, 'ko-KR', { numeric: true }))
+  .map(([path, image], index) => {
+    const imageName = toRollingImageName(path)
+
+    return {
+      id: `hero-deck-${index + 1}-${imageName}`,
+      kind: 'image',
+      image,
+      imageAlt: `${imageName} 실제 사례 이미지`,
+    }
+  })
+
+const HERO_DECK_VISIBLE_COUNT = 9
+const HERO_DECK_SHUFFLE_STEP = 1
+const HERO_DECK_CARD_STYLES = [
+  { x: '0px', y: '-18px', rotate: '0deg', scale: '1', opacity: '1', z: 40 },
+  { x: '-118px', y: '10px', rotate: '-6.5deg', scale: '0.92', opacity: '0.94', z: 34 },
+  { x: '118px', y: '10px', rotate: '6.5deg', scale: '0.92', opacity: '0.94', z: 33 },
+  { x: '-214px', y: '62px', rotate: '-12deg', scale: '0.78', opacity: '0.62', z: 20 },
+  { x: '214px', y: '62px', rotate: '12deg', scale: '0.78', opacity: '0.62', z: 19 },
+  { x: '-292px', y: '126px', rotate: '-17deg', scale: '0.64', opacity: '0.34', z: 11 },
+  { x: '292px', y: '126px', rotate: '17deg', scale: '0.64', opacity: '0.34', z: 10 },
+  { x: '-54px', y: '154px', rotate: '-3deg', scale: '0.66', opacity: '0.26', z: 8 },
+  { x: '54px', y: '154px', rotate: '3deg', scale: '0.66', opacity: '0.26', z: 7 },
+] as const
+
+const getHeroDeckCardStyle = (index: number): CSSProperties => {
+  const fallbackStyle = HERO_DECK_CARD_STYLES[HERO_DECK_CARD_STYLES.length - 1]
+  const itemStyle = HERO_DECK_CARD_STYLES[index] ?? fallbackStyle
+
+  return {
+    '--deck-x': itemStyle.x,
+    '--deck-y': itemStyle.y,
+    '--deck-rotate': itemStyle.rotate,
+    '--deck-scale': itemStyle.scale,
+    '--deck-opacity': itemStyle.opacity,
+    '--deck-z': itemStyle.z,
+  } as CSSProperties
+}
+
+const getShiftedHeroDeckCards = (shuffleIndex: number): RollingImageCard[] => {
+  if (heroDeckCards.length === 0) {
+    return []
+  }
+
+  const shift = (shuffleIndex * HERO_DECK_SHUFFLE_STEP) % heroDeckCards.length
+  return [...heroDeckCards.slice(shift), ...heroDeckCards.slice(0, shift)].slice(
+    0,
+    Math.min(HERO_DECK_VISIBLE_COUNT, heroDeckCards.length),
+  )
+}
 
 const activeScamCases = [
   {
@@ -964,51 +969,6 @@ const faqItems = [
     answer:
       '최근 투자사기에서는 바람잡이 계정을 활용해 허위 수익 인증이나 성공 사례를 반복적으로 보여주는 경우가 많습니다. 실제 투자자가 아닌 운영진 계정일 가능성도 있어 주의가 필요합니다.',
   },
-  {
-    question: '출금하려는데 세금이나 수수료를 먼저 내라고 합니다. 정상인가요?',
-    answer:
-      '출금을 조건으로 세금, 보증금, 인증비, 해제비용 등을 별도로 요구하는 경우에는 주의가 필요합니다. 추가 입금을 하기 전에 해당 요구가 실제 금융 절차에 근거한 것인지 확인하는 것이 좋습니다.',
-  },
-  {
-    question: '수익은 화면에 보이는데 출금이 되지 않습니다. 어떻게 해야 하나요?',
-    answer:
-      '사이트나 앱에 표시되는 수익금이 실제 자산을 의미한다고 단정할 수는 없습니다. 출금이 계속 지연되거나 추가 입금을 요구한다면 송금내역, 대화내용, 사이트 화면 등을 우선 확보해 두는 것이 중요합니다.',
-  },
-  {
-    question: '처음에는 실제로 소액 출금이 됐는데도 피해일 수 있나요?',
-    answer:
-      '그럴 수 있습니다. 초기에는 신뢰를 얻기 위해 소액 출금을 정상적으로 진행해 준 뒤 더 큰 금액의 투자를 유도하는 방식도 사용됩니다. 소액 출금 성공만으로 전체 거래가 안전하다고 판단하기는 어렵습니다.',
-  },
-  {
-    question: '유명 증권사나 금융회사 이름을 쓰고 있는데 믿어도 되나요?',
-    answer:
-      '회사명, 로고, 직원 명함 등을 그대로 사용하는 사칭 사례가 존재합니다. 공식 홈페이지의 연락처, 금융회사 등록 여부, 실제 운영 주체 등을 별도로 확인하는 것이 중요합니다.',
-  },
-  {
-    question: '경찰에 신고만 하면 피해금도 돌려받을 수 있나요?',
-    answer:
-      '형사 신고와 피해금 회수 절차는 목적이 다를 수 있습니다. 형사절차를 진행하면서 필요에 따라 민사상 보전처분이나 반환청구 등을 함께 검토하는 경우도 있습니다.',
-  },
-  {
-    question: '이미 경찰에 신고했는데 추가로 할 수 있는 게 있나요?',
-    answer:
-      '사건 상황에 따라 추가 자료 제출, 관련 계좌 확인, 민사 절차 검토, 재산 보전 가능성 확인 등을 함께 살펴볼 수 있습니다. 신고가 접수됐다고 해서 다른 대응 방법이 모두 끝나는 것은 아닙니다.',
-  },
-  {
-    question: '사이트가 갑자기 접속되지 않습니다. 이제 늦은 건가요?',
-    answer:
-      '사이트가 폐쇄됐다고 해서 모든 대응이 불가능해지는 것은 아닙니다. 이미 확보한 송금내역, URL, 대화내용, 입금계좌, 담당자 정보 등이 중요한 자료가 될 수 있습니다.',
-  },
-  {
-    question: '송금한 지 시간이 많이 지났는데도 대응할 수 있나요?',
-    answer:
-      '시간이 지났더라도 확인할 수 있는 절차는 있습니다. 다만 시간이 오래될수록 계좌의 자금이 이동하거나 자료가 사라질 가능성이 있으므로 가능한 빨리 관련 자료를 정리하는 것이 좋습니다.',
-  },
-  {
-    question: '처음 연락한 사람이 아니라 다른 담당자가 계속 바뀝니다. 왜 그런가요?',
-    answer:
-      '상담원, 팀장, 재무담당자, 출금담당자처럼 여러 역할을 나누어 연락하는 방식이 사용되기도 합니다. 담당자가 바뀌더라도 모든 대화방과 연락처를 삭제하지 않고 보관하는 것이 좋습니다.',
-  },
 ]
 
 const companyPlaceholders = Array.from({ length: 12 })
@@ -1061,33 +1021,48 @@ const lawyerProfiles: LawyerProfile[] = [
 
 const toTrimmedString = (value: unknown): string => (typeof value === 'string' ? value.trim() : '')
 const KEYWORD_COMPANY_CASE_LIMIT = 8
+const COMPANY_CASES_PER_PAGE = 40
 const ADMIN_ITEMS_PER_PAGE = 30
-const COMPANY_CASE_RANDOM_SEED = Math.floor(Math.random() * 0x1_0000_0000)
+const COMPANY_VISIBILITY_OPTIONS: ReadonlyArray<{
+  value: CompanyVisibility
+  label: string
+  description: string
+}> = [
+  {
+    value: 'public',
+    label: '공개',
+    description: '홈페이지 목록과 검색에 노출하고 상세 페이지도 그대로 보여줍니다.',
+  },
+  {
+    value: 'phone',
+    label: '전화연결',
+    description: '홈페이지 목록과 검색에서는 숨기고 상세 페이지에서는 전화 안내를 보여줍니다.',
+  },
+  {
+    value: 'searchBlocked',
+    label: '검색차단',
+    description: '홈페이지 목록과 검색에서는 숨기지만 상세 페이지는 그대로 보여줍니다.',
+  },
+]
+
+const getCompanyVisibility = (item: Pick<CompanyCase, 'isPublic' | 'isSearchBlocked'>): CompanyVisibility => {
+  if (!item.isPublic) {
+    return 'phone'
+  }
+
+  return item.isSearchBlocked ? 'searchBlocked' : 'public'
+}
+
+const isCompanyVisibleInSiteSearch = (item: Pick<CompanyCase, 'isPublic' | 'isSearchBlocked'>): boolean =>
+  item.isPublic && !item.isSearchBlocked
+
+const getCompanyVisibilityLabel = (visibility: CompanyVisibility): string =>
+  COMPANY_VISIBILITY_OPTIONS.find((option) => option.value === visibility)?.label ?? '공개'
+
+const getCompanyVisibilityCssName = (visibility: CompanyVisibility): string =>
+  visibility === 'searchBlocked' ? 'search-blocked' : visibility
+
 type PaginationItem = number | 'ellipsis-start' | 'ellipsis-end'
-
-const getCompanyCaseRandomScore = (id: string): number => {
-  let score = COMPANY_CASE_RANDOM_SEED
-
-  for (let index = 0; index < id.length; index += 1) {
-    score = Math.imul(score ^ id.charCodeAt(index), 16_777_619)
-  }
-
-  return score >>> 0
-}
-
-const shuffleCompanyCases = (items: CompanyCase[]): CompanyCase[] => {
-  const shuffledItems = [...items]
-
-  for (let index = shuffledItems.length - 1; index > 0; index -= 1) {
-    const randomIndex = Math.floor(Math.random() * (index + 1))
-    ;[shuffledItems[index], shuffledItems[randomIndex]] = [
-      shuffledItems[randomIndex],
-      shuffledItems[index],
-    ]
-  }
-
-  return shuffledItems
-}
 
 const getPaginationItems = (totalPages: number, currentPage: number): PaginationItem[] => {
   if (totalPages <= 7) {
@@ -1209,6 +1184,17 @@ const companyCaseMatchesKeyword = (item: CompanyCase, keyword: string): boolean 
   })
 }
 
+const shuffleCompanyCases = (items: CompanyCase[]): CompanyCase[] => {
+  const shuffledItems = [...items]
+
+  for (let index = shuffledItems.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1))
+    ;[shuffledItems[index], shuffledItems[randomIndex]] = [shuffledItems[randomIndex], shuffledItems[index]]
+  }
+
+  return shuffledItems
+}
+
 const ROLLING_CASE_LIMITS = {
   category: 40,
   title: 120,
@@ -1230,7 +1216,6 @@ const CONSULTATION_NAME_REGEX = /^[가-힣]{2,6}$/
 const CONSULTATION_PHONE_REGEX = /^\d{11}$/
 
 const POWERLINK_KEYWORD_LIMIT = 120
-
 const MAX_IMAGE_UPLOAD_SIZE_MB = 10
 const MAX_IMAGE_UPLOAD_SIZE_BYTES = MAX_IMAGE_UPLOAD_SIZE_MB * 1024 * 1024
 
@@ -1242,8 +1227,7 @@ const getFileExtension = (file: File): string => {
     return extensionFromName
   }
 
-  const extensionFromType = file.type.split('/')[1]?.toLowerCase() ?? ''
-  return extensionFromType || 'jpg'
+  return file.type.split('/')[1]?.toLowerCase() || 'jpg'
 }
 
 const validateImageFile = (file: File) => {
@@ -1266,13 +1250,9 @@ const uploadCaseImage = async (params: {
 
   const fileExtension = getFileExtension(file)
   const uniqueKey = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-  const filePath = `${bucketFolder}/${user.uid}/${uniqueKey}.${fileExtension}`
-  const uploadedFileRef = storageRef(storage, filePath)
+  const uploadedFileRef = storageRef(storage, `${bucketFolder}/${user.uid}/${uniqueKey}.${fileExtension}`)
 
-  await uploadBytes(uploadedFileRef, file, {
-    contentType: file.type || undefined,
-  })
-
+  await uploadBytes(uploadedFileRef, file, { contentType: file.type || undefined })
   return getDownloadURL(uploadedFileRef)
 }
 
@@ -1296,21 +1276,15 @@ const toUploadErrorMessage = (error: unknown, fallbackMessage: string) => {
     if (error.code === 'storage/unauthorized') {
       return '스토리지 업로드 권한이 없습니다. Firebase Storage Rules를 확인해주세요.'
     }
-
     if (error.code === 'storage/quota-exceeded') {
       return '스토리지 용량 한도를 초과했습니다. Firebase 요금제/용량을 확인해주세요.'
     }
-
     if (error.code === 'storage/canceled') {
       return '이미지 업로드가 취소되었습니다.'
     }
   }
 
-  if (error instanceof Error && error.message) {
-    return error.message
-  }
-
-  return fallbackMessage
+  return error instanceof Error && error.message ? error.message : fallbackMessage
 }
 
 const toAuthErrorMessage = (error: unknown): string => {
@@ -1382,15 +1356,17 @@ const runWithPermissionRetry = async <T,>(params: {
   throw lastError ?? new Error('권한 오류로 처리에 실패했습니다.')
 }
 
-function App() {
-  const [route, setRoute] = useState<PageRoute>(() => resolveRoute(window.location.pathname))
+function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
+  const pathname = typeof window === 'undefined' ? initialPathname : window.location.pathname
+  const [route, setRoute] = useState<PageRoute>(() => resolveRoute(pathname))
   const [selectedCompanyCaseId, setSelectedCompanyCaseId] = useState(() =>
-    getCompanyCaseIdFromPath(window.location.pathname),
+    getCompanyCaseIdFromPath(pathname),
   )
   const rollingTrackRef = useRef<HTMLDivElement | null>(null)
   const rollingImageInputRef = useRef<HTMLInputElement | null>(null)
   const companyImageInputRef = useRef<HTMLInputElement | null>(null)
   const quickFormSectionRef = useRef<HTMLElement | null>(null)
+  const heroStatsBarRef = useRef<HTMLDivElement | null>(null)
   const companyDetailImageRef = useRef<HTMLDivElement | null>(null)
   const companyDetailCopyRef = useRef<HTMLDivElement | null>(null)
   const companyDetailStackedRef = useRef(false)
@@ -1429,24 +1405,28 @@ function App() {
     !isFirebaseConfigured || Boolean(INITIAL_COMPANY_PAGE_DATA),
   )
   const [powerlinkLinks, setPowerlinkLinks] = useState<PowerlinkLink[]>([])
-
   const [adminOpen, setAdminOpen] = useState(false)
   const [adminNotice, setAdminNotice] = useState('')
   const [adminError, setAdminError] = useState('')
-
   const [rollingCategoryInput, setRollingCategoryInput] = useState('')
   const [rollingTitleInput, setRollingTitleInput] = useState('')
   const [rollingResultInput, setRollingResultInput] = useState('')
   const [rollingImageFile, setRollingImageFile] = useState<File | null>(null)
   const [rollingUploadBusy, setRollingUploadBusy] = useState(false)
-
   const [companyNameInput, setCompanyNameInput] = useState('')
   const [companyServiceInput, setCompanyServiceInput] = useState('')
   const [companyDescriptionInput, setCompanyDescriptionInput] = useState('')
   const [companyImageFile, setCompanyImageFile] = useState<File | null>(null)
+  const [companyVisibilityInput, setCompanyVisibilityInput] = useState<CompanyVisibility>('public')
   const [companyUploadBusy, setCompanyUploadBusy] = useState(false)
   const [companyVisibilityBusyId, setCompanyVisibilityBusyId] = useState('')
   const [companyEditingCaseId, setCompanyEditingCaseId] = useState('')
+  const [adminCompanySearchInput, setAdminCompanySearchInput] = useState('')
+  const [adminRollingCurrentPage, setAdminRollingCurrentPage] = useState(1)
+  const [adminCompanyCurrentPage, setAdminCompanyCurrentPage] = useState(1)
+  const [adminPowerlinkCurrentPage, setAdminPowerlinkCurrentPage] = useState(1)
+  const [powerlinkKeywordInput, setPowerlinkKeywordInput] = useState('')
+  const [powerlinkGenerateBusy, setPowerlinkGenerateBusy] = useState(false)
   const [companySearchInput, setCompanySearchInput] = useState(() =>
     INITIAL_COMPANY_PAGE_DATA?.kind === 'list'
       ? INITIAL_COMPANY_PAGE_DATA.searchQuery
@@ -1465,11 +1445,6 @@ function App() {
         ? 1
         : 0,
   )
-  const [adminCompanySearchInput, setAdminCompanySearchInput] = useState('')
-  const [adminRollingCurrentPage, setAdminRollingCurrentPage] = useState(1)
-  const [adminCompanyCurrentPage, setAdminCompanyCurrentPage] = useState(1)
-  const [adminPowerlinkCurrentPage, setAdminPowerlinkCurrentPage] = useState(1)
-
   const [consultationNameInput, setConsultationNameInput] = useState('')
   const [consultationPhoneInput, setConsultationPhoneInput] = useState('')
   const [consultationDetailsInput, setConsultationDetailsInput] = useState('')
@@ -1480,16 +1455,18 @@ function App() {
   const [consultationNotice, setConsultationNotice] = useState('')
   const [consultationError, setConsultationError] = useState('')
 
-  const [powerlinkKeywordInput, setPowerlinkKeywordInput] = useState('')
-  const [powerlinkGenerateBusy, setPowerlinkGenerateBusy] = useState(false)
-  const [heroTypedText, setHeroTypedText] = useState('')
-  const [recoveryTypedText, setRecoveryTypedText] = useState('')
+  const [heroTypedText, setHeroTypedText] = useState(import.meta.env.SSR ? HERO_TYPING_TEXT : '')
+  const [heroDeckShuffleIndex, setHeroDeckShuffleIndex] = useState(0)
   const [companiesBannerTypedText, setCompaniesBannerTypedText] = useState('')
-  const [isCompactViewport, setIsCompactViewport] = useState(() => window.matchMedia('(max-width: 900px)').matches)
+  const [isCompactViewport, setIsCompactViewport] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches)
   const [companyDetailStacked, setCompanyDetailStacked] = useState(false)
+  const [heroStatValues, setHeroStatValues] = useState<number[]>(() => HERO_STAT_ITEMS.map((item) => import.meta.env.SSR ? item.value : 0))
+  const [heroStatsShouldAnimate, setHeroStatsShouldAnimate] = useState(false)
 
-  const landingPath = window.location.pathname || '/'
-  const landingSearch = getTrackableQueryString(window.location.search || '', window.location.hash || '')
+  const landingPath = pathname || '/'
+  const landingSearch = typeof window === 'undefined'
+    ? ''
+    : getTrackableQueryString(window.location.search || '', window.location.hash || '')
   const landingToken = useMemo(() => getPowerlinkTokenFromPath(landingPath), [landingPath])
   const trackedNaverKeyword = useMemo(
     () => getNaverTrackedKeywordFromQueryString(landingSearch),
@@ -1507,10 +1484,8 @@ function App() {
     const matchedLink = powerlinkLinks.find((item) => item.token === landingToken)
     return matchedLink?.keyword ?? ''
   }, [landingToken, powerlinkLinks, trackedNaverKeyword])
-  const heroKeywordLabel = landingPowerlinkKeyword || '금융사기'
-  const heroTypingText = useMemo(() => getHeroTypingText(heroKeywordLabel), [heroKeywordLabel])
   const isNaverPowerlinkVisit = Boolean(landingToken || trackedNaverKeyword)
-  const showHeroTypingCursor = route === 'home' && heroTypedText.length < heroTypingText.length
+  const showHeroTypingCursor = route === 'home' && heroTypedText.length < HERO_TYPING_TEXT.length
   const companiesBannerTypingText = isCompactViewport
     ? COMPANIES_BANNER_TYPING_TEXT_MOBILE
     : COMPANIES_BANNER_TYPING_TEXT_DESKTOP
@@ -1520,10 +1495,7 @@ function App() {
     INITIAL_COMPANY_PAGE_DATA?.kind === 'list'
       ? INITIAL_COMPANY_PAGE_DATA.searchQuery
       : getRequestedCompanySearchQuery()
-  const filteredCompanyCases = useMemo(
-    () => companyCases.filter(isCompanyCaseVisibleInSiteSearch),
-    [companyCases],
-  )
+  const filteredCompanyCases = companyCases.filter(isCompanyVisibleInSiteSearch)
   const companyPageCount = Math.max(1, companyTotalPages)
   const activeCompanyPage = Math.min(companyCurrentPage, companyPageCount)
   const paginatedCompanyCases = filteredCompanyCases
@@ -1582,18 +1554,11 @@ function App() {
       return []
     }
 
-    return companyCases
-      .filter(
-        (item) =>
-          isCompanyCaseVisibleInSiteSearch(item) && companyCaseMatchesKeyword(item, landingPowerlinkKeyword),
-      )
-      .sort((firstItem, secondItem) => {
-        const scoreDifference =
-          getCompanyCaseRandomScore(firstItem.id) - getCompanyCaseRandomScore(secondItem.id)
-
-        return scoreDifference || firstItem.id.localeCompare(secondItem.id, 'ko-KR')
-      })
-      .slice(0, KEYWORD_COMPANY_CASE_LIMIT)
+    return shuffleCompanyCases(
+      companyCases.filter(
+        (item) => isCompanyVisibleInSiteSearch(item) && companyCaseMatchesKeyword(item, landingPowerlinkKeyword),
+      ),
+    ).slice(0, KEYWORD_COMPANY_CASE_LIMIT)
   }, [companyCases, landingPowerlinkKeyword])
   const keywordSectionCompanyCases = useMemo(() => {
     return landingPowerlinkKeyword ? keywordCompanyCases : []
@@ -1696,8 +1661,32 @@ function App() {
     () => [...displayRollingCases, ...displayRollingCases, ...displayRollingCases],
     [displayRollingCases],
   )
+  const visibleHeroDeckCards = useMemo(
+    () => getShiftedHeroDeckCards(heroDeckShuffleIndex),
+    [heroDeckShuffleIndex],
+  )
   const consultationSubmitDisabled =
     consultationBusy || consultationAfter2025Input === 'no' || !consultationPrivacyAgreed
+
+  const handleHeroDeckShuffle = () => {
+    setHeroDeckShuffleIndex((currentIndex) => currentIndex + 1)
+  }
+
+  useEffect(() => {
+    if (route !== 'home' || heroDeckCards.length <= 1) {
+      return
+    }
+
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return
+    }
+
+    const intervalId = window.setInterval(() => {
+      setHeroDeckShuffleIndex((currentIndex) => currentIndex + 1)
+    }, 2000)
+
+    return () => window.clearInterval(intervalId)
+  }, [route])
 
   useEffect(() => {
     const legacyRoute = resolveLegacyHashRoute(window.location.hash)
@@ -1811,7 +1800,7 @@ function App() {
 
   useEffect(() => {
     if (route !== 'home') {
-      setHeroTypedText(heroTypingText)
+      setHeroTypedText(HERO_TYPING_TEXT)
       return
     }
 
@@ -1821,13 +1810,13 @@ function App() {
 
     const typeNextCharacter = () => {
       typingIndex += 1
-      setHeroTypedText(heroTypingText.slice(0, typingIndex))
+      setHeroTypedText(HERO_TYPING_TEXT.slice(0, typingIndex))
 
-      if (typingIndex >= heroTypingText.length) {
+      if (typingIndex >= HERO_TYPING_TEXT.length) {
         return
       }
 
-      timeoutId = window.setTimeout(typeNextCharacter, getTypingDelay(heroTypingText[typingIndex - 1]))
+      timeoutId = window.setTimeout(typeNextCharacter, getTypingDelay(HERO_TYPING_TEXT[typingIndex - 1]))
     }
 
     timeoutId = window.setTimeout(typeNextCharacter, 340)
@@ -1835,7 +1824,7 @@ function App() {
     return () => {
       window.clearTimeout(timeoutId)
     }
-  }, [route, heroTypingText])
+  }, [route])
 
   useEffect(() => {
     if (route !== 'companies') {
@@ -1867,52 +1856,79 @@ function App() {
 
   useEffect(() => {
     if (route !== 'home') {
-      setRecoveryTypedText(RECOVERY_TYPING_MESSAGES[0])
+      setHeroStatsShouldAnimate(false)
+      setHeroStatValues(HERO_STAT_ITEMS.map(() => 0))
       return
     }
 
-    let timeoutId = 0
-    let messageIndex = 0
-    let typingIndex = 0
-    let isDeleting = false
-    setRecoveryTypedText('')
+    setHeroStatsShouldAnimate(false)
+    setHeroStatValues(HERO_STAT_ITEMS.map(() => 0))
+    const statsBarElement = heroStatsBarRef.current
 
-    const typeNextCharacter = () => {
-      const currentMessage = RECOVERY_TYPING_MESSAGES[messageIndex]
+    if (!statsBarElement) {
+      return
+    }
 
-      if (!isDeleting) {
-        typingIndex += 1
-        setRecoveryTypedText(currentMessage.slice(0, typingIndex))
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const isVisible = entries.some((entry) => entry.isIntersecting)
 
-        if (typingIndex >= currentMessage.length) {
-          isDeleting = true
-          timeoutId = window.setTimeout(typeNextCharacter, 1900)
+        if (!isVisible) {
           return
         }
 
-        timeoutId = window.setTimeout(typeNextCharacter, getLongTypingDelay(currentMessage[typingIndex - 1]))
-        return
-      }
+        setHeroStatsShouldAnimate(true)
+        observer.disconnect()
+      },
+      {
+        threshold: 0.42,
+        rootMargin: '0px 0px -6% 0px',
+      },
+    )
 
-      typingIndex = Math.max(typingIndex - 1, 0)
-      setRecoveryTypedText(currentMessage.slice(0, typingIndex))
-
-      if (typingIndex <= 0) {
-        isDeleting = false
-        messageIndex = (messageIndex + 1) % RECOVERY_TYPING_MESSAGES.length
-        timeoutId = window.setTimeout(typeNextCharacter, 420)
-        return
-      }
-
-      timeoutId = window.setTimeout(typeNextCharacter, 42)
-    }
-
-    timeoutId = window.setTimeout(typeNextCharacter, 480)
+    observer.observe(statsBarElement)
 
     return () => {
-      window.clearTimeout(timeoutId)
+      observer.disconnect()
     }
   }, [route])
+
+  useEffect(() => {
+    if (route !== 'home' || !heroStatsShouldAnimate) {
+      return
+    }
+
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+    if (prefersReducedMotion) {
+      setHeroStatValues(HERO_STAT_ITEMS.map((item) => item.value))
+      return
+    }
+
+    let frameId = 0
+    let animationStart = 0
+    const durationMs = 1900
+
+    const animate = (now: number) => {
+      if (!animationStart) {
+        animationStart = now
+      }
+
+      const progress = Math.min((now - animationStart) / durationMs, 1)
+      const eased = 1 - (1 - progress) ** 3
+      setHeroStatValues(HERO_STAT_ITEMS.map((item) => Math.round(item.value * eased)))
+
+      if (progress < 1) {
+        frameId = window.requestAnimationFrame(animate)
+      }
+    }
+
+    frameId = window.requestAnimationFrame(animate)
+
+    return () => {
+      window.cancelAnimationFrame(frameId)
+    }
+  }, [route, heroStatsShouldAnimate])
 
   useEffect(() => {
     if (route !== 'home') {
@@ -2271,10 +2287,7 @@ function App() {
     }
 
     setCompanyCasesLoaded(false)
-    const companyCasesQuery =
-      route === 'companies'
-        ? query(collection(db, 'companyCases'))
-        : query(collection(db, 'companyCases'), orderBy('createdAt', 'desc'))
+    const companyCasesQuery = query(collection(db, 'companyCases'), orderBy('createdAt', 'desc'))
 
     const unsubscribe = onSnapshot(
       companyCasesQuery,
@@ -2301,7 +2314,7 @@ function App() {
               isSearchBlocked: data.isSearchBlocked === true,
             }
           })
-          .filter((item): item is CompanyCase => item !== null)
+          .filter((item) => item !== null)
 
         if (route === 'admin') {
           setAdminCompanyCases(mappedCases)
@@ -3075,6 +3088,7 @@ function App() {
     setCompanyServiceInput('')
     setCompanyDescriptionInput('')
     setCompanyImageFile(null)
+    setCompanyVisibilityInput('public')
 
     if (companyImageInputRef.current) {
       companyImageInputRef.current.value = ''
@@ -3088,6 +3102,7 @@ function App() {
     setCompanyServiceInput(item.service)
     setCompanyDescriptionInput(item.description)
     setCompanyImageFile(null)
+    setCompanyVisibilityInput(getCompanyVisibility(item))
 
     if (companyImageInputRef.current) {
       companyImageInputRef.current.value = ''
@@ -3159,6 +3174,8 @@ function App() {
           service,
           description,
           image,
+          isPublic: companyVisibilityInput !== 'phone',
+          isSearchBlocked: companyVisibilityInput === 'searchBlocked',
           updatedAt: serverTimestamp(),
         })
 
@@ -3185,8 +3202,8 @@ function App() {
         service,
         description,
         image,
-        isPublic: true,
-        isSearchBlocked: false,
+        isPublic: companyVisibilityInput !== 'phone',
+        isSearchBlocked: companyVisibilityInput === 'searchBlocked',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         createdBy: currentUser.uid,
@@ -3210,37 +3227,48 @@ function App() {
     }
   }
 
-  const handleSetCompanyVisibility = async (
-    item: CompanyCase,
-    nextVisibility: CompanyCaseVisibility,
-  ) => {
+  const handleSetCompanyCaseVisibility = async (item: CompanyCase, visibility: CompanyVisibility) => {
     clearAdminFeedback()
 
-    if (!isStaff || !currentUser) {
+    if (!isStaff) {
       setAdminError('관리자 로그인 후 이용해주세요.')
       return
     }
 
-    if (getCompanyCaseVisibility(item) === nextVisibility) {
+    if (getCompanyVisibility(item) === visibility) {
       return
     }
 
+    const isPublic = visibility !== 'phone'
+    const isSearchBlocked = visibility === 'searchBlocked'
     setCompanyVisibilityBusyId(item.id)
 
     try {
       await updateDoc(doc(db, 'companyCases', item.id), {
-        isPublic: nextVisibility !== 'phone',
-        isSearchBlocked: nextVisibility === 'searchBlocked',
+        isPublic,
+        isSearchBlocked,
         updatedAt: serverTimestamp(),
       })
-      setAdminNotice({
-        public: '사기업체 정보를 공개로 전환했습니다.',
-        phone: '사기업체 정보를 전화연결로 전환했습니다. 홈페이지 검색에서는 제외됩니다.',
-        searchBlocked: '사기업체 정보를 검색차단으로 전환했습니다. 홈페이지 검색에서는 제외됩니다.',
-      }[nextVisibility])
+
+      setCompanyCases((items) =>
+        items.map((currentItem) =>
+          currentItem.id === item.id ? { ...currentItem, isPublic, isSearchBlocked } : currentItem,
+        ),
+      )
+      setAdminCompanyCases((items) =>
+        items.map((currentItem) =>
+          currentItem.id === item.id ? { ...currentItem, isPublic, isSearchBlocked } : currentItem,
+        ),
+      )
+
+      if (companyEditingCaseId === item.id) {
+        setCompanyVisibilityInput(visibility)
+      }
+
+      setAdminNotice(`사기업체 게시물을 ${getCompanyVisibilityLabel(visibility)} 상태로 변경했습니다.`)
     } catch (error) {
       console.error(error)
-      setAdminError('사기업체 노출 상태 변경에 실패했습니다. Firebase 권한과 연결 상태를 확인해주세요.')
+      setAdminError('사기업체 게시물 공개 상태 변경에 실패했습니다.')
     } finally {
       setCompanyVisibilityBusyId('')
     }
@@ -3289,7 +3317,7 @@ function App() {
   }
 
   return (
-    <div className={`app-shell ${route === 'admin' ? 'app-shell-admin' : ''}`}>
+    <div className={`app-shell ${route === 'admin' ? 'app-shell-admin' : ''}`} data-prerendered={import.meta.env.SSR ? '' : undefined}>
       {route !== 'admin' ? (
         <header className="top-nav">
           <a className="brand" href={getRoutePath('home')} onClick={(event) => handleRouteNavigation(event, 'home')}>
@@ -3620,6 +3648,26 @@ function App() {
                     service={companyServiceInput}
                     description={companyDescriptionInput}
                   />
+                  <label className="admin-visibility-field">
+                    게시 상태
+                    <select
+                      value={companyVisibilityInput}
+                      onChange={(event) => setCompanyVisibilityInput(event.target.value as CompanyVisibility)}
+                      disabled={companyUploadBusy}
+                    >
+                      {COMPANY_VISIBILITY_OPTIONS.map((option) => (
+                        <option value={option.value} key={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <small>
+                      {
+                        COMPANY_VISIBILITY_OPTIONS.find((option) => option.value === companyVisibilityInput)
+                          ?.description
+                      }
+                    </small>
+                  </label>
                   <label>
                     {companyEditingCaseId ? '이미지 파일 (선택)' : '이미지 파일'}
                     <input
@@ -3690,57 +3738,49 @@ function App() {
                         <>
                           <ul className="admin-item-list">
                             {paginatedAdminCompanyCases.map((item) => {
-                              const visibility = getCompanyCaseVisibility(item)
-                              const visibilityBusy = companyVisibilityBusyId === item.id
+                              const visibility = getCompanyVisibility(item)
 
                               return (
-                                <li className="admin-item" key={item.id}>
+                                <li
+                                  className={`admin-item${visibility === 'public' ? '' : ' admin-item-hidden'}`}
+                                  key={item.id}
+                                >
                                   <div>
-                                    <p>{item.service}</p>
+                                    <p>
+                                      {item.service}
+                                      <span
+                                        className={`admin-visibility-badge is-${getCompanyVisibilityCssName(visibility)}`}
+                                      >
+                                        {getCompanyVisibilityLabel(visibility)}
+                                      </span>
+                                    </p>
                                     <strong>{item.name}</strong>
-                                    <span
-                                      className={`admin-item-visibility ${
-                                        visibility === 'searchBlocked' ? 'is-search-blocked' : `is-${visibility}`
-                                      }`}
-                                    >
-                                      {{
-                                        public: '공개',
-                                        phone: '전화연결',
-                                        searchBlocked: '검색차단',
-                                      }[visibility]}
-                                    </span>
                                   </div>
                                   <div className="admin-item-actions">
-                                    {(
-                                      [
-                                        ['public', '공개', '홈페이지 목록과 검색에 노출'],
-                                        ['phone', '전화연결', '홈페이지 검색에서 숨기고 상세 페이지에 전화 안내 노출'],
-                                        ['searchBlocked', '검색차단', '홈페이지 검색에서 숨기고 상세 페이지는 정상 노출'],
-                                      ] as const
-                                    ).map(([nextVisibility, label, title]) => (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleStartEditCompanyCase(item)}
+                                      disabled={companyVisibilityBusyId === item.id}
+                                    >
+                                      수정
+                                    </button>
+                                    {COMPANY_VISIBILITY_OPTIONS.map((option) => (
                                       <button
                                         type="button"
-                                        className={visibility === nextVisibility ? 'is-active' : ''}
-                                        onClick={() => handleSetCompanyVisibility(item, nextVisibility)}
-                                        disabled={visibilityBusy}
-                                        aria-pressed={visibility === nextVisibility}
-                                        title={title}
-                                        key={nextVisibility}
+                                        className={`admin-visibility-action visibility-${getCompanyVisibilityCssName(option.value)}${
+                                          visibility === option.value ? ' is-active' : ''
+                                        }`}
+                                        onClick={() => handleSetCompanyCaseVisibility(item, option.value)}
+                                        disabled={companyVisibilityBusyId === item.id || visibility === option.value}
+                                        key={option.value}
                                       >
-                                        {visibilityBusy && visibility === nextVisibility ? '변경 중' : label}
+                                        {option.label}
                                       </button>
                                     ))}
                                     <button
                                       type="button"
-                                      onClick={() => handleStartEditCompanyCase(item)}
-                                      disabled={visibilityBusy}
-                                    >
-                                      수정
-                                    </button>
-                                    <button
-                                      type="button"
                                       onClick={() => handleDeleteCompanyCase(item.id, item.image)}
-                                      disabled={visibilityBusy}
+                                      disabled={companyVisibilityBusyId === item.id}
                                     >
                                       삭제
                                     </button>
@@ -3842,10 +3882,17 @@ function App() {
 
         {route === 'home' && (
           <>
-            <section className="hero-section" aria-label="법무법인 나란 피해회복 첫 화면">
+            <section className="hero-section">
               <div className="hero-inner section-wrap">
                 <div className="hero-copy">
-                  <h1 aria-label={heroTypingText}>
+        
+                  <p className="hero-eyebrow hero-eyebrow-nowrap">
+                    VIP·투자·로맨스스캠 사칭 피해, 신고만으로 끝내지 마세요
+                  </p>
+                  {landingPowerlinkKeyword ? (
+                    <p className="hero-keyword-highlight">{landingPowerlinkKeyword}</p>
+                  ) : null}
+                  <h1 aria-label="피해금 회복은 고소 전 전략 설계부터 시작됩니다.">
                     <span className="hero-typing-text">{heroTypedText || '\u00A0'}</span>
                     {showHeroTypingCursor ? (
                       <span className="hero-typing-cursor" aria-hidden="true">
@@ -3853,43 +3900,51 @@ function App() {
                       </span>
                     ) : null}
                   </h1>
-                  <p className="hero-lead">
-                    리딩방, 비상장 주식, 코인, 로맨스 스캠까지. 이미 빠져나간 투자금도 골든타임을 놓치지
-                    않는다면 회수할 수 있습니다.
-                  </p>
-                  <p className="hero-support">
-                    상담 시 피해 경위 · 입금 내역 · 상대방 정보를 말씀해주시면, 즉시 자산 추적 가능성을
-                    진단해드립니다.
+                  <p className="hero-subcopy">
+                    잘못된 초기 대응은 <strong>수사중지·불송치·무혐의</strong>로 이어질 수 있습니다.<br/>
+                    나란은 접수 전부터 진술 방향과 입증 계획을 먼저 세웁니다.
                   </p>
                 </div>
 
-                <div className="hero-receipt-pill" aria-label="피해 접수 현황">
-                  <span>피해 접수</span>
-                  <strong>60</strong>
-                  <span>건+</span>
-                  <small>(2026-05-28 기준)</small>
-                </div>
-
-                <div className="hero-action-row">
-                  <a className="hero-phone-cta" href={CONTACT_PHONE_TEL} aria-label={`전화문의 ${CONTACT_PHONE_NUMBER}`}>
-                    <span className="hero-button-icon" aria-hidden="true">
-                      <svg viewBox="0 0 24 24" focusable="false">
-                        <path
-                          d="M6.7 3.3A2 2 0 0 1 8.9 2h1.9a2 2 0 0 1 2 1.7l.4 2.8a2 2 0 0 1-1.1 2.1l-1.4.7a13.2 13.2 0 0 0 4.1 4.1l.7-1.4a2 2 0 0 1 2.1-1.1l2.8.4a2 2 0 0 1 1.7 2v1.9a2 2 0 0 1-1.3 2.2l-1.2.4a7.8 7.8 0 0 1-6.8-1.1A22.3 22.3 0 0 1 5.2 10a7.8 7.8 0 0 1-1.1-6.8l.4-1.2a2 2 0 0 1 2.2-1.3Z"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="1.9"
+                {visibleHeroDeckCards.length > 0 ? (
+                  <div className="hero-evidence-board" aria-label="법무법인 나란 실제 진행 사례 자료">
+                    <button
+                      type="button"
+                      className="hero-card-deck"
+                      onClick={handleHeroDeckShuffle}
+                      aria-label="실제 진행 사례 이미지 카드 섞기"
+                    >
+                      {visibleHeroDeckCards.map((item, index) => (
+                        <img
+                          className="hero-card-deck-image"
+                          src={item.image}
+                          alt={item.imageAlt}
+                          style={getHeroDeckCardStyle(index)}
+                          loading={index < 4 ? 'eager' : 'lazy'}
+                          key={item.id}
                         />
-                      </svg>
-                    </span>
-                    <span>전화문의 {CONTACT_PHONE_NUMBER}</span>
-                  </a>
-                  <a className="hero-cta" href={getRoutePath('home')} onClick={handleConsultingNavigation}>
-                    피해 사실 접수
-                  </a>
+                      ))}
+                    </button>
+
+                    <p className="hero-evidence-note">
+                    </p>
+                  </div>
+                ) : null}
+
+                <div className="hero-stats-bar" ref={heroStatsBarRef} aria-label="상담 및 해결 통계">
+                  <ul className="hero-stats-list">
+                    {HERO_STAT_ITEMS.map((item, index) => (
+                      <li className="hero-stats-item" key={item.label}>
+                        <p className="hero-stats-label">{item.label}</p>
+                        <strong className="hero-stats-value">{(heroStatValues[index] ?? 0).toLocaleString('ko-KR')}+</strong>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
+
+                <a className="hero-cta" href={getRoutePath('home')} onClick={handleConsultingNavigation}>
+                  피해 사실 접수
+                </a>
               </div>
             </section>
 
@@ -3937,17 +3992,6 @@ function App() {
                 </div>
               </section>
             ) : null}
-
-            <section className="recovery-typing-section reveal-on-scroll" aria-label="사기 피해회복 대응 메시지">
-              <div className="section-wrap recovery-typing-inner">
-                <p>
-                  <span>{recoveryTypedText || '\u00A0'}</span>
-                  <span className="recovery-typing-cursor" aria-hidden="true">
-                    |
-                  </span>
-                </p>
-              </div>
-            </section>
 
             <section className="rolling-section reveal-on-scroll" aria-label="성공사례 롤링 배너">
               <div className="section-wrap rolling-head">
@@ -4126,9 +4170,9 @@ function App() {
         {route === 'lawyers' && (
           <section className="section-wrap lawyers-page">
             <div className="lawyers-page-head reveal-on-scroll">
-              <h2>
+              <h1>
                 실력으로 증명하는 <span>베테랑 전문가 그룹</span>
-              </h2>
+              </h1>
               <p>법무법인 나란의 고객의 피해회복을 최우선하는 든든한 파트너가 되겠습니다.</p>
             </div>
 
@@ -4191,8 +4235,23 @@ function App() {
 
             <div className="section-wrap companies-grid-wrap">
               {selectedCompanyCaseId ? (
-                selectedCompanyCase?.isPublic ? (
-                  <>
+                selectedCompanyCase ? (
+                  getCompanyVisibility(selectedCompanyCase) === 'phone' ? (
+                    <div className="company-detail company-detail-empty">
+                      <p className="company-detail-deleted-message">
+                        현재 페이지는 삭제되었습니다.
+                        <br />
+                        해당 내용으로 사칭 피해를 보신 분들은 즉시 {COMPANY_PHONE_NUMBER}으로 연락 바랍니다.
+                      </p>
+                      <a className="company-detail-call" href={COMPANY_PHONE_TEL}>
+                        전화연결
+                      </a>
+                      <a className="company-detail-back" href={ROUTE_PATHS.companies}>
+                        목록으로
+                      </a>
+                    </div>
+                  ) : (
+                    <>
                     <article className="company-detail">
                       <a className="company-detail-back" href={ROUTE_PATHS.companies}>
                         목록으로
@@ -4216,35 +4275,29 @@ function App() {
                       </div>
                     </article>
 
-                    <section className="company-detail-contact-section" aria-label="전화 및 카카오톡 상담">
+                    <section className="company-detail-kakao-section" aria-label="전화 및 카카오톡 상담 배너">
                       <a
-                        className="company-detail-contact-banner"
+                        className="company-detail-kakao-banner"
                         href={CONTACT_PHONE_TEL}
-                        aria-label={`전화상담 ${CONTACT_PHONE_NUMBER}`}
+                        aria-label="법무법인 나란 1551-7202 전화 상담 연결"
                       >
-                        <img src={phoneConnectImg} alt={`전화상담 ${CONTACT_PHONE_NUMBER}`} />
+                        <img src={phoneConnectBannerImg} alt="법무법인 나란 무료상담 전화연결 1551-7202" />
                       </a>
                       <a
-                        className="company-detail-contact-banner"
+                        className="company-detail-kakao-banner"
                         href={KAKAO_OPEN_CHAT_URL}
                         target="_blank"
                         rel="noreferrer noopener"
                         aria-label="법무법인 나란 카카오톡 상담 열기"
                       >
-                        <img src={kakaoConnectImg} alt="카카오톡 무료상담 바로 연결" />
+                        <img src={kakaoConnectBannerImg} alt="법무법인 나란 카카오톡 무료상담 연결" />
                       </a>
                     </section>
-                  </>
+                    </>
+                  )
                 ) : companyCasesLoaded ? (
                   <div className="company-detail company-detail-empty">
-                    <p className="company-detail-deleted-message">
-                      현재 페이지는 삭제되었습니다.
-                      <br />
-                      해당 내용으로 사칭 피해를 보신 분들은 즉시 1551-7203으로 연락 바랍니다.
-                    </p>
-                    <a className="company-detail-call" href="tel:15517203">
-                      전화연결
-                    </a>
+                    <p>게시물을 찾을 수 없습니다.</p>
                     <a className="company-detail-back" href={ROUTE_PATHS.companies}>
                       목록으로
                     </a>
