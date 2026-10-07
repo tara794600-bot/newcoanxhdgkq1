@@ -42,6 +42,7 @@ const toDate = (value) => {
 }
 
 const escapeXml = (value) => String(value)
+  // eslint-disable-next-line no-control-regex -- Keep only characters permitted by XML 1.0.
   .replace(/[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/gu, '')
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')

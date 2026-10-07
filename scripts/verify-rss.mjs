@@ -83,7 +83,8 @@ for (const domain of CONTENT_SITES) {
   assert.ok(xml.includes(`href="${domain.url}/rss.xml"`))
   assert.match(xml, /&amp; &lt;검증&gt; &quot;인용&quot; &apos;작은따옴표&apos;/)
   assert.match(xml, /&lt;script&gt;alert\(&quot;x&quot;\)&lt;\/script&gt; &amp; \]\]&gt;/)
-  assert.doesNotMatch(xml, /\u0001|<script>|Invalid Date/)
+  assert.ok(!xml.includes('\u0001'))
+  assert.doesNotMatch(xml, /<script>|Invalid Date/)
   assert.match(xml, /<pubDate>Thu, 01 Oct 2026 00:00:00 GMT<\/pubDate>/)
   assert.match(xml, /<lastBuildDate>Wed, 07 Oct 2026 00:00:00 GMT<\/lastBuildDate>/)
 }
