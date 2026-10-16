@@ -5,10 +5,9 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { matchesCompanySearch, resolveCompanyContent } from '../shared/company-content.js'
-import { getRequestContentSite } from '../server/content-site.js'
+import { CONTENT_SITE } from '../shared/site.js'
 
-const DEFAULT_SITE = getRequestContentSite()
-const SITE_BASE_URL = DEFAULT_SITE.url
+const SITE_BASE_URL = CONTENT_SITE.url
 const TEMPLATE_SITE_URL = 'https://www.naranfintech사기업체.kr'
 const DESCRIPTION_MAX_LENGTH = 155
 const SEARCH_RESULT_SITE_NAME = '법무법인나란'
@@ -338,7 +337,7 @@ const getCompaniesBreadcrumbStructuredData = (canonicalUrl, companyCase = null, 
   ],
 })
 
-const mapCompanyCase = (snapshot, site) => {
+const mapCompanyCase = (snapshot) => {
   const data = snapshot.data() ?? {}
   const name = toTrimmedString(data.name)
   const service = toTrimmedString(data.service)
@@ -354,7 +353,7 @@ const mapCompanyCase = (snapshot, site) => {
     name,
     service,
     description,
-    image: image || `${site.url}/logo.png`,
+    image: image || `${SITE_BASE_URL}/logo.png`,
     isPublic: data.isPublic !== false,
     isSearchBlocked: data.isSearchBlocked === true,
     datePublished: toIsoDateTime(data.createdAt),
@@ -362,7 +361,7 @@ const mapCompanyCase = (snapshot, site) => {
   }
 }
 
-const getCompanyCase = async (id, site) => {
+const getCompanyCase = async (id) => {
   const app = getFirebaseApp()
   const snapshot = await getFirestore(app).collection('companyCases').doc(id).get()
 
@@ -370,18 +369,18 @@ const getCompanyCase = async (id, site) => {
     return null
   }
 
-  return mapCompanyCase(snapshot, site)
+  return mapCompanyCase(snapshot)
 }
 
-const getCompaniesPage = async ({ page, searchQuery }, site) => {
+const getCompaniesPage = async ({ page, searchQuery }) => {
   const app = getFirebaseApp()
   const collectionRef = getFirestore(app).collection('companyCases')
   const snapshot = await collectionRef.get()
   const publicItems = snapshot.docs
-    .map((item) => mapCompanyCase(item, site))
+    .map((item) => mapCompanyCase(item))
     .filter(Boolean)
     .filter((item) => item.isPublic !== false && item.isSearchBlocked !== true)
-    .filter((item) => matchesCompanySearch(item, searchQuery, site.id))
+    .filter((item) => matchesCompanySearch(item, searchQuery))
   const shuffledItems = shuffleItems(publicItems)
   const totalCount = shuffledItems.length
   const startIndex = (page - 1) * COMPANY_CASES_PER_PAGE
@@ -525,13 +524,12 @@ const renderPrivateCompanyCaseServerContent = (companyCase) => `<div class="app-
   </main>
 </div>`
 
-export const buildCompaniesPageHtml = (html, pageData, site = DEFAULT_SITE) => {
-  html = html.replaceAll(TEMPLATE_SITE_URL, site.url)
-  const SITE_BASE_URL = site.url
+export const buildCompaniesPageHtml = (html, pageData) => {
+  html = html.replaceAll(TEMPLATE_SITE_URL, SITE_BASE_URL)
   const DEFAULT_IMAGE_URL = `${SITE_BASE_URL}/logo.png`
   const renderPageData = {
     ...pageData,
-    items: pageData.items.map((item) => resolveCompanyContent(item, site.id)).filter(
+    items: pageData.items.map((item) => resolveCompanyContent(item)).filter(
       (item) => item.isPublic !== false && item.isSearchBlocked !== true,
     ),
   }
@@ -608,10 +606,9 @@ export const buildCompaniesPageHtml = (html, pageData, site = DEFAULT_SITE) => {
   return nextHtml
 }
 
-export const buildCompanyCasePageHtml = (html, rawCompanyCase, site = DEFAULT_SITE) => {
-  html = html.replaceAll(TEMPLATE_SITE_URL, site.url)
-  const companyCase = resolveCompanyContent(rawCompanyCase, site.id)
-  const SITE_BASE_URL = site.url
+export const buildCompanyCasePageHtml = (html, rawCompanyCase) => {
+  html = html.replaceAll(TEMPLATE_SITE_URL, SITE_BASE_URL)
+  const companyCase = resolveCompanyContent(rawCompanyCase)
   const DEFAULT_IMAGE_URL = `${SITE_BASE_URL}/logo.png`
   const path = `/companies/${encodeURIComponent(companyCase.id)}`
   const canonicalUrl = `${SITE_BASE_URL}${path}`
@@ -692,9 +689,8 @@ export const buildCompanyCasePageHtml = (html, rawCompanyCase, site = DEFAULT_SI
   return nextHtml
 }
 
-export const buildNotFoundPageHtml = (html, requestedPath, site = DEFAULT_SITE) => {
-  html = html.replaceAll(TEMPLATE_SITE_URL, site.url)
-  const SITE_BASE_URL = site.url
+export const buildNotFoundPageHtml = (html, requestedPath) => {
+  html = html.replaceAll(TEMPLATE_SITE_URL, SITE_BASE_URL)
   const canonicalUrl = `${SITE_BASE_URL}${requestedPath}`
   const title = '페이지를 찾을 수 없습니다 | 법무법인 나란'
   const content = `<div class="app-shell"><main><section class="section-wrap companies-grid-wrap"><h1>페이지를 찾을 수 없습니다.</h1><a class="company-detail-back" href="/companies">사기업체 게시판으로 이동</a></section></main></div>`
@@ -776,23 +772,22 @@ export default async function handler(req, res) {
   }
 
   try {
-    const site = getRequestContentSite(req)
     const id = getRequestCompanyCaseId(req)
     const indexHtml = await getIndexHtml()
 
     if (id) {
-      const companyCase = await getCompanyCase(id, site)
+      const companyCase = await getCompanyCase(id)
 
       if (!companyCase) {
         const requestedPath = `/companies/${encodeURIComponent(id)}`
-        return sendHtml(req, res, 404, buildNotFoundPageHtml(indexHtml, requestedPath, site), 'no-store')
+        return sendHtml(req, res, 404, buildNotFoundPageHtml(indexHtml, requestedPath), 'no-store')
       }
 
       return sendHtml(
         req,
         res,
         200,
-        buildCompanyCasePageHtml(indexHtml, companyCase, site),
+        buildCompanyCasePageHtml(indexHtml, companyCase),
         'public, s-maxage=300, stale-while-revalidate=3600',
       )
     }
@@ -801,17 +796,17 @@ export default async function handler(req, res) {
     const searchQuery = getRequestQueryValue(req, 'q').slice(0, COMPANY_SEARCH_MAX_LENGTH)
 
     if (!requestedPage.valid) {
-      return sendHtml(req, res, 404, buildNotFoundPageHtml(indexHtml, COMPANIES_PAGE_PATH, site), 'no-store')
+      return sendHtml(req, res, 404, buildNotFoundPageHtml(indexHtml, COMPANIES_PAGE_PATH), 'no-store')
     }
 
-    const pageData = await getCompaniesPage({ page: requestedPage.page, searchQuery }, site)
+    const pageData = await getCompaniesPage({ page: requestedPage.page, searchQuery })
 
     if (pageData.totalCount > 0 && pageData.page > pageData.totalPages) {
       return sendHtml(
         req,
         res,
         404,
-        buildNotFoundPageHtml(indexHtml, getCompaniesPagePath(pageData.page, searchQuery), site),
+        buildNotFoundPageHtml(indexHtml, getCompaniesPagePath(pageData.page, searchQuery)),
         'no-store',
       )
     }
@@ -820,7 +815,7 @@ export default async function handler(req, res) {
       req,
       res,
       200,
-      buildCompaniesPageHtml(indexHtml, pageData, site),
+      buildCompaniesPageHtml(indexHtml, pageData),
       'private, no-store, max-age=0',
     )
   } catch (error) {

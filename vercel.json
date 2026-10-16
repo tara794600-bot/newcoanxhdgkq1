@@ -5,17 +5,6 @@
       "source": "/lawyers/",
       "destination": "/lawyers",
       "permanent": true
-    },
-    {
-      "source": "/:path*",
-      "has": [
-        {
-          "type": "host",
-          "value": "naranfintech.com"
-        }
-      ],
-      "destination": "https://www.naranfintech.com/:path*",
-      "permanent": true
     }
   ],
   "headers": [

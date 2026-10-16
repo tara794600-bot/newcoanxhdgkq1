@@ -1,9 +1,8 @@
 import { cert, getApps, initializeApp } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
-import { getRequestContentSite } from '../server/content-site.js'
+import { CONTENT_SITE as site } from '../shared/site.js'
 import { resolveCompanyContent } from '../shared/company-content.js'
 
-const DEFAULT_SITE = getRequestContentSite()
 const RSS_ITEM_LIMIT = 500
 const DESCRIPTION_MAX_LENGTH = 1000
 const toTrimmedString = (value) => (typeof value === 'string' ? value.trim() : '')
@@ -57,7 +56,7 @@ const summarize = (description) => {
     : characters.join('')
 }
 
-export const getLatestCompanyRssItems = async (collectionRef, site = DEFAULT_SITE) => {
+export const getLatestCompanyRssItems = async (collectionRef) => {
   const items = []
   const query = collectionRef.orderBy('createdAt', 'desc').limit(RSS_ITEM_LIMIT)
   let cursor = null
@@ -75,7 +74,7 @@ export const getLatestCompanyRssItems = async (collectionRef, site = DEFAULT_SIT
         continue
       }
 
-      const content = resolveCompanyContent({ name, service, description }, site.id)
+      const content = resolveCompanyContent({ name, service, description })
       items.push({
         title: content.name,
         link: `${site.url}/companies/${encodeURIComponent(doc.id)}`,
@@ -92,7 +91,7 @@ export const getLatestCompanyRssItems = async (collectionRef, site = DEFAULT_SIT
   return items
 }
 
-export const renderRss = (items, site = DEFAULT_SITE, now = new Date()) => `<?xml version="1.0" encoding="UTF-8"?>
+export const renderRss = (items, now = new Date()) => `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>사기업체 게시판 | 법무법인 나란</title>
@@ -121,10 +120,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    const site = getRequestContentSite(req)
     const collectionRef = getFirestore(getFirebaseApp()).collection('companyCases')
-    const items = await getLatestCompanyRssItems(collectionRef, site)
-    const rss = renderRss(items, site)
+    const items = await getLatestCompanyRssItems(collectionRef)
+    const rss = renderRss(items)
 
     res.setHeader('Content-Type', 'application/rss+xml; charset=utf-8')
     res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=300, must-revalidate')

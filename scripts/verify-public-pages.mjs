@@ -1,9 +1,7 @@
 import assert from 'node:assert/strict'
-import { access, readFile } from 'node:fs/promises'
+import { access, readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
-import { loadEnv } from 'vite'
-import { domainToUnicode } from 'node:url'
-import { CONTENT_SITES, getContentSite } from '../shared/company-content.js'
+import { CONTENT_SITE as site } from '../shared/site.js'
 import { SEO_META_BY_ROUTE } from '../shared/page-meta.js'
 import handler from '../api/site-page.js'
 import { buildCompanyCasePageHtml } from '../api/company-page.js'
@@ -20,11 +18,12 @@ const response = () => ({
   end(body = '') { this.body = body; return this },
 })
 
-for (const site of CONTENT_SITES) {
+// Request Host must never select another website in this deployment.
+for (const host of [new URL(site.url).host, 'www.naranfintech.com', 'www.naranfintechnews.co.kr', 'localhost']) {
   for (const route of ['home', 'lawyers']) {
     const meta = SEO_META_BY_ROUTE[route]
     const res = response()
-    await handler({ method: 'GET', url: meta.path, headers: { host: new URL(site.url).host } }, res)
+    await handler({ method: 'GET', url: meta.path, headers: { host } }, res)
     assert.equal(res.statusCode, 200)
     assert.match(res.headers['Content-Type'], /text\/html/)
     const html = res.body
@@ -41,19 +40,16 @@ for (const site of CONTENT_SITES) {
     assert.match(body, /href="tel:15517202"/)
     assert.match(body, /data-prerendered=""/)
     if (route === 'home') {
-      assert.match(body, /<span class="hero-typing-text">금융사기,\n나란을 만난 순간부터\n해결의 길은 시작됩니다<\/span>/)
+      assert.match(body, /<span class="hero-typing-text">수많은 사기 피해 대응 경험,\n그 차이를 증명합니다\.<\/span>/)
       assert.match(body, /주식\/코인 사기/)
       assert.match(body, /로맨스스캠 사기/)
-      assert.match(body, /<span>사기 피해 회복은 속도전입니다\./)
+      assert.match(body, /<p class="hero-subcopy">잘못된 초기 대응은 <strong>수사중지·불송치·무혐의<\/strong>/)
     } else {
       for (const name of ['서지원 대표변호사', '최지연 변호사', '정이든 변호사']) assert.ok(body.includes(name))
       assert.match(body, /서울도봉경찰서 경미범죄 심사위원회 위원/)
       assert.doesNotMatch(body, /class="hero-section"/)
     }
-    for (const otherSite of CONTENT_SITES.filter((candidate) => candidate.id !== site.id)) {
-      assert.ok(!html.includes(otherSite.url), `Unexpected cross-domain URL: ${otherSite.url}`)
-      assert.ok(!html.includes(domainToUnicode(new URL(otherSite.url).hostname)), 'Unexpected Korean cross-domain hostname')
-    }
+    assert.doesNotMatch(html, /https:\/\/www\.naranfintech(?:news\.co\.kr|\.com)/)
     // SSR image/CSS/JS references must point at assets produced by the client build.
     for (const match of html.matchAll(/(?:src|href)="(\/assets\/[^"?#]+)"/g)) {
       await access(path.join(dist, decodeURIComponent(match[1])))
@@ -62,7 +58,7 @@ for (const site of CONTENT_SITES) {
       JSON.parse(match[1])
     }
     const head = response()
-    await handler({ method: 'HEAD', url: `/api/site-page?route=${route}`, headers: { host: new URL(site.url).host } }, head)
+    await handler({ method: 'HEAD', url: `/api/site-page?route=${route}`, headers: { host } }, head)
     assert.equal(head.statusCode, 200)
     assert.equal(head.body, '')
   }
@@ -78,16 +74,14 @@ assert.equal(missing.statusCode, 404)
 const detail = buildCompanyCasePageHtml(shell, {
   id: 'public-page-regression', name: '회귀 확인 업체', service: '사례',
   description: '업체 상세 본문', image: '/logo.png',
-}, CONTENT_SITES[0])
-assert.match(detail, /<h1>회귀 확인 업체<\/h1>/)
+})
+assert.match(detail, /<h1>회귀 확인 업체 피해 관련 확인 사항<\/h1>/)
 assert.doesNotMatch(detail, /class="hero-section"|data-prerendered/)
 const home = await readFile(path.join(dist, 'index.html'), 'utf8')
-assert.match(home, /<span class="hero-typing-text">금융사기,\n나란을 만난 순간부터\n해결의 길은 시작됩니다<\/span>/)
-const env = { ...loadEnv('production', process.cwd(), 'VITE_'), ...process.env }
-const defaultSite = getContentSite({ siteId: env.VITE_SITE_ID, siteUrl: env.VITE_SITE_URL || 'https://www.naranfintech사기업체.kr' })
-assert.ok(home.includes(`rel="canonical" href="${defaultSite.url}/"`))
+assert.match(home, /<span class="hero-typing-text">수많은 사기 피해 대응 경험,\n그 차이를 증명합니다\.<\/span>/)
+assert.ok(home.includes(`rel="canonical" href="${site.url}/"`))
 const lawyers = await readFile(path.join(dist, 'lawyers.html'), 'utf8')
-assert.ok(lawyers.includes(`rel="canonical" href="${defaultSite.url}/lawyers"`))
+assert.ok(lawyers.includes(`rel="canonical" href="${site.url}/lawyers"`))
 for (const tag of shell.matchAll(/<meta\s+name="(?:naver|google)-site-verification"[^>]*>/g)) {
   assert.ok(home.includes(tag[0]), 'Search engine verification tags must be preserved')
 }
@@ -99,4 +93,5 @@ for (const [source, route] of [['/', 'home'], ['/lawyers', 'lawyers']]) {
 }
 assert.equal(routes.functions['api/company-page.js'].includeFiles, 'dist/app-shell.html')
 assert.equal(routes.functions['api/site-page.js'].includeFiles, 'dist/prerender/**')
-console.log('Public initial HTML verified: 3 domains, 2 routes, metadata, content, assets, HEAD and company-page isolation.')
+assert.deepEqual((await readdir(path.join(dist, 'prerender'))).sort(), ['home.html', 'lawyers.html'])
+console.log('Public initial HTML verified: fixed canonical domain, 2 routes, metadata, content, assets, HEAD and company-page isolation.')

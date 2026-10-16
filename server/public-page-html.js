@@ -1,4 +1,5 @@
 import { SEO_META_BY_ROUTE } from '../shared/page-meta.js'
+import { CONTENT_SITE as site } from '../shared/site.js'
 
 const escapeHtml = (value) => String(value)
   .replace(/&/g, '&amp;')
@@ -7,7 +8,7 @@ const escapeHtml = (value) => String(value)
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&#39;')
 
-export const buildPublicPageHtml = (template, markup, route, site) => {
+export const buildPublicPageHtml = (template, markup, route) => {
   if (route !== 'home' && route !== 'lawyers') throw new Error('Unsupported public page')
   if (!template.includes('<div id="root"></div>')) throw new Error('Expected an empty app shell')
 

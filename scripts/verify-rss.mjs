@@ -4,7 +4,8 @@ import { mock } from 'node:test'
 import { deleteApp, initializeApp } from 'firebase-admin/app'
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import handler, { getLatestCompanyRssItems, renderRss } from '../api/rss.js'
-import { CONTENT_SITES, resolveCompanyContent } from '../shared/company-content.js'
+import { resolveCompanyContent } from '../shared/company-content.js'
+import { CONTENT_SITE as site } from '../shared/site.js'
 
 // Model Firestore ordering, limits and document cursors without live credentials.
 const createCollection = (records) => {
@@ -46,8 +47,7 @@ const hiddenRecords = Array.from({ length: 510 }, (_, index) => record(`hidden-$
   ...[{ isPublic: false }, { service: ' ' }, { description: ' ' }][index % 3],
 }))
 const collection = createCollection([...records, ...hiddenRecords])
-const site = CONTENT_SITES[0]
-const items = await getLatestCompanyRssItems(collection.ref, site)
+const items = await getLatestCompanyRssItems(collection.ref)
 assert.equal(items.length, 500)
 assert.equal(collection.reads(), 3)
 assert.equal(new Set(items.map((item) => item.link)).size, 500)
@@ -58,12 +58,12 @@ assert.ok(items.every((item) => !item.link.includes('hidden-')))
 assert.ok(items.some((item) => item.link.endsWith('/post-0501')), 'Internal search-blocked posts belong in RSS')
 
 const shortCollection = createCollection(records.slice(0, 2))
-assert.equal((await getLatestCompanyRssItems(shortCollection.ref, site)).length, 2)
+assert.equal((await getLatestCompanyRssItems(shortCollection.ref)).length, 2)
 assert.equal(shortCollection.reads(), 1)
-assert.deepEqual(await getLatestCompanyRssItems(createCollection([]).ref, site), [])
-assert.deepEqual(await getLatestCompanyRssItems(createCollection(hiddenRecords).ref, site), [])
+assert.deepEqual(await getLatestCompanyRssItems(createCollection([]).ref), [])
+assert.deepEqual(await getLatestCompanyRssItems(createCollection(hiddenRecords).ref), [])
 const exactCollection = createCollection(records.slice(0, 500))
-assert.equal((await getLatestCompanyRssItems(exactCollection.ref, site)).length, 500)
+assert.equal((await getLatestCompanyRssItems(exactCollection.ref)).length, 500)
 assert.equal(exactCollection.reads(), 1)
 
 const specialPost = {
@@ -73,31 +73,29 @@ const specialPost = {
   createdAt: Timestamp.fromMillis(baseTime),
 }
 const specialRecord = record('한글 & ?#', specialPost)
-for (const domain of CONTENT_SITES) {
-  const domainItems = await getLatestCompanyRssItems(createCollection([specialRecord]).ref, domain)
-  const content = resolveCompanyContent(specialPost, domain.id)
-  assert.equal(domainItems[0].title, content.name)
-  assert.equal(domainItems[0].link, `${domain.url}/companies/${encodeURIComponent(specialRecord.id)}`)
-  const xml = renderRss(domainItems, domain, new Date('2026-10-07T00:00:00Z'))
-  assert.match(xml, /^<\?xml version="1.0" encoding="UTF-8"\?>/)
-  assert.ok(xml.includes(`href="${domain.url}/rss.xml"`))
-  assert.match(xml, /&amp; &lt;검증&gt; &quot;인용&quot; &apos;작은따옴표&apos;/)
-  assert.match(xml, /&lt;script&gt;alert\(&quot;x&quot;\)&lt;\/script&gt; &amp; \]\]&gt;/)
-  assert.ok(!xml.includes('\u0001'))
-  assert.doesNotMatch(xml, /<script>|Invalid Date/)
-  assert.match(xml, /<pubDate>Thu, 01 Oct 2026 00:00:00 GMT<\/pubDate>/)
-  assert.match(xml, /<lastBuildDate>Wed, 07 Oct 2026 00:00:00 GMT<\/lastBuildDate>/)
-}
+const specialItems = await getLatestCompanyRssItems(createCollection([specialRecord]).ref)
+const content = resolveCompanyContent(specialPost)
+assert.equal(specialItems[0].title, content.name)
+assert.equal(specialItems[0].link, `${site.url}/companies/${encodeURIComponent(specialRecord.id)}`)
+const xml = renderRss(specialItems, new Date('2026-10-07T00:00:00Z'))
+assert.match(xml, /^<\?xml version="1.0" encoding="UTF-8"\?>/)
+assert.ok(xml.includes(`href="${site.url}/rss.xml"`))
+assert.match(xml, /&amp; &lt;검증&gt; &quot;인용&quot; &apos;작은따옴표&apos;/)
+assert.match(xml, /&lt;script&gt;alert\(&quot;x&quot;\)&lt;\/script&gt; &amp; \]\]&gt;/)
+assert.ok(!xml.includes('\u0001'))
+assert.doesNotMatch(xml, /<script>|Invalid Date/)
+assert.match(xml, /<pubDate>Thu, 01 Oct 2026 00:00:00 GMT<\/pubDate>/)
+assert.match(xml, /<lastBuildDate>Wed, 07 Oct 2026 00:00:00 GMT<\/lastBuildDate>/)
 const longItems = await getLatestCompanyRssItems(createCollection([
   record('long-post', { ...specialPost, description: '🙂'.repeat(2000) }),
-]).ref, site)
+]).ref)
 assert.equal(Array.from(longItems[0].description).length, 1001)
 assert.ok(longItems[0].description.endsWith('🙂…'))
 const undated = await getLatestCompanyRssItems(createCollection([
   record('undated', { ...specialPost, createdAt: null }),
-]).ref, site)
-assert.doesNotMatch(renderRss(undated, site), /<pubDate>|Invalid Date/)
-assert.equal((renderRss(items, site).match(/<item>/g) ?? []).length, 500)
+]).ref)
+assert.doesNotMatch(renderRss(undated), /<pubDate>|Invalid Date/)
+assert.equal((renderRss(items).match(/<item>/g) ?? []).length, 500)
 
 const response = () => ({
   headers: {}, statusCode: 0, body: undefined,
@@ -113,15 +111,15 @@ mock.method(getFirestore(app), 'collection', (name) => {
   return activeCollection
 })
 try {
-  for (const domain of CONTENT_SITES) {
-    const req = { method: 'GET', url: '/rss.xml', headers: { host: new URL(domain.url).host } }
+  for (const host of [new URL(site.url).host, 'www.naranfintech.com', 'www.naranfintechnews.co.kr', 'localhost']) {
+    const req = { method: 'GET', url: '/rss.xml', headers: { host } }
     const res = response()
     await handler(req, res)
     assert.equal(res.statusCode, 200)
     assert.equal(res.headers['Content-Type'], 'application/rss+xml; charset=utf-8')
     assert.match(res.headers['Cache-Control'], /s-maxage=300/)
-    assert.ok(res.body.includes(`href="${domain.url}/rss.xml"`))
-    assert.ok(res.body.includes(`${domain.url}/companies/`))
+    assert.ok(res.body.includes(`href="${site.url}/rss.xml"`))
+    assert.ok(res.body.includes(`${site.url}/companies/`))
     const head = response()
     await handler({ ...req, method: 'HEAD' }, head)
     assert.equal(head.statusCode, 200)
@@ -166,4 +164,4 @@ for (const file of ['index.html', 'dist/app-shell.html']) {
   const html = await readFile(new URL(`../${file}`, import.meta.url), 'utf8')
   assert.match(html, /<link[^>]*type="application\/rss\+xml"[^>]*href="\/rss.xml"/)
 }
-console.log('RSS verified: latest 500, pagination, visibility, three domains, XML escaping, GET/HEAD, failure responses and dynamic routing.')
+console.log('RSS verified: latest 500, pagination, visibility, fixed canonical domain, XML escaping, GET/HEAD, failure responses and dynamic routing.')
