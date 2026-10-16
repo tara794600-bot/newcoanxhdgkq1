@@ -337,7 +337,7 @@ const validateConsultationPayload = (payload) => {
     throw new HttpError(400, '이름, 연락처, 피해 내용을 모두 입력해주세요.')
   }
 
-  if (incidentAfter2025 !== 'yes') {
+  if (incidentAfter2025 && incidentAfter2025 !== 'yes') {
     throw new HttpError(400, '2025년 이후 사건만 신청할 수 있습니다.')
   }
 
@@ -516,7 +516,9 @@ const buildTelegramMessage = (request) => {
     '',
     `👤 이름: ${request.name}`,
     `📞 연락처: ${formattedPhone}`,
-    `🗓️ 25년 이후 사건: ${formatYesNoForDisplay(request.incidentAfter2025)}`,
+    ...(request.incidentAfter2025
+      ? [`🗓️ 25년 이후 사건: ${formatYesNoForDisplay(request.incidentAfter2025)}`]
+      : []),
     ...(landingKeyword ? [`🔎 검색어: ${landingKeyword}`] : []),
     `✅ 피해내용: ${details}`,
   ].join('\n')
