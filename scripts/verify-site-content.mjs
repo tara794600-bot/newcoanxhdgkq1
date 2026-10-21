@@ -4,6 +4,7 @@ import { mock } from 'node:test'
 import { deleteApp, initializeApp } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
 import { matchesCompanySearch, resolveCompanyContent } from '../shared/company-content.js'
+import { companyPostToPlainText, getCompanyPostImageUrls, sanitizeCompanyPostHtml, summarizeCompanyPostText } from '../shared/company-post.js'
 import { CONTENT_SITE as site } from '../shared/site.js'
 import companyHandler, { buildCompaniesPageHtml, buildCompanyCasePageHtml, buildNotFoundPageHtml } from '../api/company-page.js'
 import sitemapHandler, { renderSitemap } from '../api/sitemap.js'
@@ -70,6 +71,32 @@ assert.equal((symbolPage.match(/<title>/g) ?? []).length, 1)
 assert.deepEqual(resolveCompanyContent({}), { name: '', description: '' })
 assert.equal(original.name, '샘플 업체')
 
+// Blog editor posts: stored HTML is filtered before it reaches any page.
+const imageUrl = 'https://firebasestorage.googleapis.com/v0/b/demo/o/a.png?alt=media&token=1'
+const richPost = {
+  ...original,
+  hasRichContent: true,
+  contentHtml: `<div class="se-component se-image se-align-center evil" contenteditable="false"><figure class="se-image-figure"><img src="${imageUrl.replace('&', '&amp;')}" onerror="alert(1)"></figure></div>`
+    + '<p style="font-family: NanumGothic, sans-serif; position: fixed">본문 <b>강조</b></p><script>alert(1)</script>'
+    + '<a href="javascript:alert(1)">위험</a><img src="http://insecure.example/a.png"><iframe src="https://evil.example"></iframe>',
+}
+const richDetail = buildCompanyCasePageHtml(html, richPost)
+const richBody = richDetail.slice(richDetail.indexOf('company-post-body'), richDetail.indexOf('</article>'))
+assert.ok(richBody.startsWith('company-post-body"><div class="se-component se-image se-align-center"><figure class="se-image-figure"><img src='))
+assert.ok(richBody.includes('<p style="font-family: NanumGothic, sans-serif;">본문 <b>강조</b></p>'))
+assert.doesNotMatch(richBody, /onerror|contenteditable|<script|javascript:|position|insecure\.example|iframe|evil/)
+assert.ok(richDetail.includes(`<h1>${expected.name}</h1>`))
+assert.ok(richDetail.includes('data-company-post-font="https://hangeul.pstatic.net/hangeul_static/css/nanum-gothic.css"'))
+assert.equal(readBootstrap(richDetail).item.contentHtml, sanitizeCompanyPostHtml(richPost.contentHtml))
+assert.deepEqual(getCompanyPostImageUrls(richPost.contentHtml), [imageUrl])
+assert.equal('contentHtml' in readBootstrap(buildCompanyCasePageHtml(html, { ...richPost, isPublic: false })).item, false)
+assert.equal(buildCompanyCasePageHtml(html, { ...richPost, contentHtml: '' }).includes('company-post-body'), false)
+assert.equal(companyPostToPlainText('<p>첫 줄</p><p><br></p><p>둘째 &amp; <b>셋째</b></p><table><tr><td>가</td><td>나</td></tr></table>'), '첫 줄\n\n둘째 & 셋째\n가 나')
+assert.equal(summarizeCompanyPostText('가나다라마', 4), '가나다…')
+assert.equal(summarizeCompanyPostText('가나다', 4), '가나다')
+assert.equal(sanitizeCompanyPostHtml('<b>열림<i>중첩</b>'), '<b>열림<i>중첩</i></b>')
+assert.equal(sanitizeCompanyPostHtml('<a href="https://naver.com">링크</a>'), '<a href="https://naver.com" target="_blank" rel="noopener noreferrer nofollow">링크</a>')
+
 // Exercise the server entry points with former site hosts and local previews.
 const response = () => ({
   headers: {}, statusCode: 0, body: '',
@@ -113,5 +140,26 @@ try {
 } finally {
   mock.restoreAll()
   await deleteApp(app)
+}
+
+// The detail entry point reads the blog body from its own collection.
+const richApp = initializeApp({ projectId: 'rich-post-verification' })
+const richSnapshot = { id: 'rich-post', exists: true, data: () => ({ ...original, hasRichContent: true }) }
+mock.method(getFirestore(richApp), 'collection', (name) => ({
+  doc: (id) => {
+    assert.equal(id, 'rich-post')
+    assert.ok(['companyCases', 'companyCaseContents'].includes(name))
+    return { get: async () => (name === 'companyCases' ? richSnapshot : { exists: true, data: () => ({ html: richPost.contentHtml }) }) }
+  },
+}))
+try {
+  const res = response()
+  await companyHandler({ method: 'GET', url: '/api/company-page?id=rich-post', headers: {} }, res)
+  assert.equal(res.statusCode, 200)
+  assert.ok(res.body.includes('<div class="se-content company-post-body">'))
+  assert.equal(readBootstrap(res.body).item.contentHtml, sanitizeCompanyPostHtml(richPost.contentHtml))
+} finally {
+  mock.restoreAll()
+  await deleteApp(richApp)
 }
 console.log('Single-site content verification passed')

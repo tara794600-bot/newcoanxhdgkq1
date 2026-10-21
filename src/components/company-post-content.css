@@ -1,0 +1,445 @@
+/* Shared by the admin blog editor and the public company post page. */
+.se-content {
+  color: #333333;
+  font-size: 15px;
+  line-height: 1.8;
+  text-align: left;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.se-content p,
+.se-content h3,
+.se-content li {
+  margin: 0;
+}
+
+.se-content p {
+  min-height: 1.8em;
+}
+
+.se-content h3 {
+  color: #000000;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.se-content ul,
+.se-content ol {
+  margin: 0;
+  padding-left: 1.7em;
+}
+
+.se-content b,
+.se-content strong {
+  font-weight: 700;
+}
+
+.se-content a {
+  color: #0068c3;
+  text-decoration: underline;
+}
+
+.se-content img {
+  max-width: 100%;
+}
+
+.se-component {
+  position: relative;
+  margin: 30px 0;
+}
+
+.se-align-left {
+  text-align: left;
+}
+
+.se-align-center {
+  text-align: center;
+}
+
+.se-align-right {
+  text-align: right;
+}
+
+/* 사진 */
+.se-image-figure {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  margin: 0;
+  vertical-align: top;
+}
+
+.se-image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.se-image--full .se-image-figure,
+.se-image--full img {
+  width: 100%;
+}
+
+.se-image--small .se-image-figure {
+  width: 50%;
+}
+
+.se-image--small img {
+  width: 100%;
+}
+
+.se-caption {
+  margin: 10px 0 0;
+  color: #777777;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* 스티커 */
+.se-sticker-emoji {
+  display: inline-block;
+  font-size: 96px;
+  line-height: 1.1;
+}
+
+/* 인용구 */
+.se-quote {
+  text-align: center;
+}
+
+.se-quote-text {
+  margin: 0;
+  color: #333333;
+  font-size: 19px;
+  line-height: 1.7;
+}
+
+.se-quote-cite {
+  min-height: 0;
+  margin: 12px 0 0;
+  color: #999999;
+  font-size: 13px;
+}
+
+.se-quote--quotation {
+  padding: 4px 40px;
+}
+
+.se-quote--quotation::before,
+.se-quote--quotation::after {
+  display: block;
+  height: 34px;
+  color: #000000;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 64px;
+  line-height: 1;
+}
+
+.se-quote--quotation::before {
+  content: '\201C';
+  margin-bottom: 12px;
+}
+
+.se-quote--quotation::after {
+  content: '\201D';
+  margin-top: 18px;
+}
+
+.se-quote--line {
+  padding: 2px 0 2px 22px;
+  border-left: 3px solid #000000;
+  text-align: left;
+}
+
+.se-quote--bubble {
+  position: relative;
+  margin-bottom: 44px;
+  padding: 28px 34px;
+  border: 1px solid #c8c8c8;
+  border-radius: 28px;
+}
+
+.se-quote--bubble::after {
+  content: '';
+  position: absolute;
+  left: 48px;
+  bottom: -9px;
+  width: 16px;
+  height: 16px;
+  border-right: 1px solid #c8c8c8;
+  border-bottom: 1px solid #c8c8c8;
+  background: #ffffff;
+  transform: rotate(45deg);
+}
+
+.se-quote--underline {
+  position: relative;
+  padding: 34px 30px 26px;
+  border-top: 1px solid #333333;
+  border-bottom: 1px solid #333333;
+}
+
+.se-quote--underline::before {
+  content: '\201C';
+  position: absolute;
+  top: -22px;
+  left: 50%;
+  width: 44px;
+  margin-left: -22px;
+  background: #ffffff;
+  color: #000000;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 54px;
+  line-height: 1;
+}
+
+.se-quote--postit {
+  position: relative;
+  padding: 30px 34px;
+  background: #fff6b5;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  text-align: left;
+}
+
+.se-quote--postit::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 26px;
+  height: 26px;
+  background: linear-gradient(315deg, #ffffff 50%, #e8dc8a 50%);
+}
+
+.se-quote--frame {
+  margin-right: 6px;
+  margin-left: 6px;
+  padding: 30px 34px;
+  border: 1px solid #cfcfcf;
+  box-shadow:
+    0 0 0 5px #ffffff,
+    0 0 0 6px #cfcfcf;
+}
+
+/* 구분선 */
+.se-divider hr {
+  width: 100%;
+  margin: 0 auto;
+  border: 0;
+  border-top: 1px solid #c8c8c8;
+}
+
+.se-divider--2 hr {
+  width: 64px;
+  border-top: 2px solid #333333;
+}
+
+.se-divider--3 hr {
+  border-top: 2px dotted #aaaaaa;
+}
+
+.se-divider--4 hr {
+  border-top: 1px dashed #aaaaaa;
+}
+
+.se-divider--5 hr {
+  height: 4px;
+  border-top: 1px solid #aaaaaa;
+  border-bottom: 1px solid #aaaaaa;
+}
+
+.se-divider--6 hr {
+  width: 160px;
+  border-top: 4px solid #333333;
+}
+
+.se-divider--7 {
+  position: relative;
+}
+
+.se-divider--7::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  margin: -5px 0 0 -5px;
+  border: 1px solid #999999;
+  background: #ffffff;
+  transform: rotate(45deg);
+}
+
+.se-divider--8 hr {
+  width: 72px;
+  height: 6px;
+  border: 0;
+  background: radial-gradient(circle, #555555 2.5px, transparent 3px) 0 0 / 24px 6px repeat-x;
+}
+
+/* 장소, 링크, 일정 카드 */
+.se-place-link,
+.se-link-card,
+.se-schedule-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 18px 20px;
+  border: 1px solid #e3e3e3;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #333333;
+  text-align: left;
+  text-decoration: none;
+}
+
+.se-content a.se-place-link,
+.se-content a.se-link-card {
+  color: #333333;
+  text-decoration: none;
+}
+
+.se-place-link::before,
+.se-link-card::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #03c75a center / 22px no-repeat;
+}
+
+.se-place-link::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2'%3E%3Cpath d='M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z'/%3E%3Ccircle cx='12' cy='10' r='2.3'/%3E%3C/svg%3E");
+}
+
+.se-link-card::before {
+  border-radius: 6px;
+  background-color: #f2f2f2;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23777' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1'/%3E%3Cpath d='M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1'/%3E%3C/svg%3E");
+}
+
+.se-place-info,
+.se-link-info,
+.se-schedule-info {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.se-place-name,
+.se-link-title,
+.se-schedule-title {
+  color: #000000;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.se-place-address,
+.se-link-url,
+.se-schedule-time,
+.se-schedule-place,
+.se-schedule-memo {
+  color: #888888;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.se-link-url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.se-schedule-date {
+  display: grid;
+  flex: 0 0 auto;
+  justify-items: center;
+  width: 58px;
+  overflow: hidden;
+  border: 1px solid #e3e3e3;
+  border-radius: 6px;
+  line-height: 1.2;
+}
+
+.se-schedule-month {
+  display: block;
+  width: 100%;
+  padding: 4px 0;
+  background: #f15b4f;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.se-schedule-day {
+  padding: 6px 0;
+  color: #000000;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.se-schedule-memo {
+  color: #555555;
+}
+
+/* 소스코드 */
+.se-code-source {
+  margin: 0;
+  padding: 20px 24px;
+  border: 1px solid #e3e3e3;
+  border-radius: 4px;
+  background: #f8f9fa;
+  color: #333333;
+  font-family: Consolas, Menlo, Monaco, 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  text-align: left;
+  white-space: pre-wrap;
+  tab-size: 4;
+  overflow-x: auto;
+}
+
+/* 표 */
+.se-table {
+  overflow-x: auto;
+}
+
+.se-table-content {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.se-table-content td,
+.se-table-content th {
+  min-width: 48px;
+  padding: 8px 12px;
+  border: 1px solid #d5d5d5;
+  text-align: left;
+  vertical-align: top;
+}
+
+@media (max-width: 600px) {
+  .se-sticker-emoji {
+    font-size: 72px;
+  }
+
+  .se-quote--quotation,
+  .se-quote--bubble,
+  .se-quote--postit,
+  .se-quote--frame {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+
+  .se-image--small .se-image-figure {
+    width: 70%;
+  }
+}

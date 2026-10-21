@@ -104,6 +104,9 @@ service cloud.firestore {
           'description',
           'image',
           'imageUrl',
+          'isPublic',
+          'isSearchBlocked',
+          'hasRichContent',
           'createdAt',
           'createdBy',
           'updatedAt'
@@ -112,6 +115,9 @@ service cloud.firestore {
         && hasText(data, 'service', 1, 80)
         && hasText(data, 'description', 1, 2000)
         && hasImageField(data)
+        && (!('isPublic' in data) || data.isPublic is bool)
+        && (!('isSearchBlocked' in data) || data.isSearchBlocked is bool)
+        && (!('hasRichContent' in data) || data.hasRichContent is bool)
         && data.createdAt is timestamp
         && data.createdBy is string
         && (!('updatedAt' in data) || data.updatedAt is timestamp);
@@ -127,6 +133,18 @@ service cloud.firestore {
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.createdBy == resource.data.createdBy
         && request.resource.data.updatedAt is timestamp;
+    }
+
+    // 블로그형 게시글 본문 (HTML은 공개 페이지에서 허용 목록으로 정화 후 출력)
+    function validCompanyCaseContent(data) {
+      return data.keys().hasOnly([
+          'html',
+          'updatedAt',
+          'updatedBy'
+        ])
+        && hasText(data, 'html', 1, 300000)
+        && data.updatedAt is timestamp
+        && data.updatedBy == request.auth.uid;
     }
 
     function validPowerlinkLink(data) {
@@ -175,6 +193,13 @@ service cloud.firestore {
       allow read: if true;
       allow create: if isAdmin() && validCompanyCase(request.resource.data);
       allow update: if isAdmin() && validCompanyCaseUpdate();
+      allow delete: if isAdmin();
+    }
+
+    // 사기업체 블로그형 본문 (문서 ID = companyCases 문서 ID)
+    match /companyCaseContents/{docId} {
+      allow read: if true;
+      allow create, update: if isAdmin() && validCompanyCaseContent(request.resource.data);
       allow delete: if isAdmin();
     }
 

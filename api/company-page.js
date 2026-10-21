@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { matchesCompanySearch, resolveCompanyContent } from '../shared/company-content.js'
+import { getCompanyPostFontHrefs, sanitizeCompanyPostHtml } from '../shared/company-post.js'
 import { CONTENT_SITE } from '../shared/site.js'
 
 const SITE_BASE_URL = CONTENT_SITE.url
@@ -356,6 +357,7 @@ const mapCompanyCase = (snapshot) => {
     image: image || `${SITE_BASE_URL}/logo.png`,
     isPublic: data.isPublic !== false,
     isSearchBlocked: data.isSearchBlocked === true,
+    hasRichContent: data.hasRichContent === true,
     datePublished: toIsoDateTime(data.createdAt),
     dateModified: toIsoDateTime(data.updatedAt ?? data.createdAt),
   }
@@ -369,7 +371,21 @@ const getCompanyCase = async (id) => {
     return null
   }
 
-  return mapCompanyCase(snapshot)
+  const companyCase = mapCompanyCase(snapshot)
+
+  if (!companyCase?.hasRichContent || !companyCase.isPublic) {
+    return companyCase
+  }
+
+  // Blog-style posts keep their body in a separate document so list queries
+  // stay small. If it cannot be read, the browser fetches it after loading.
+  try {
+    const content = await getFirestore(app).collection('companyCaseContents').doc(id).get()
+    return { ...companyCase, contentHtml: sanitizeCompanyPostHtml(content.data()?.html ?? '') }
+  } catch (error) {
+    console.error('[api/company-page] content error', error)
+    return companyCase
+  }
 }
 
 const getCompaniesPage = async ({ page, searchQuery }) => {
@@ -480,6 +496,28 @@ const renderCompaniesServerContent = (pageData, baseUrl) => {
 
 const renderCompanyCaseServerContent = (companyCase, baseUrl) => {
   const imageUrl = toAbsoluteUrl(companyCase.image, baseUrl) || `${baseUrl}/logo.png`
+
+  if (companyCase.contentHtml) {
+    return `<div class="app-shell">
+    <main>
+      <section class="companies-page" aria-label="사기업체 상세 사례">
+        <div class="section-wrap companies-grid-wrap">
+          <nav aria-label="경로"><a href="/">홈</a> &gt; <a href="/companies">사기업체 게시판</a> &gt; <span>${escapeHtml(
+            companyCase.name,
+          )}</span></nav>
+          <article class="company-detail company-post">
+            <a class="company-detail-back" href="/companies">목록으로</a>
+            <header class="company-post-head">
+              <p class="company-detail-service">${escapeHtml(companyCase.service)}</p>
+              <h1>${escapeHtml(companyCase.name)}</h1>
+            </header>
+            <div class="se-content company-post-body">${sanitizeCompanyPostHtml(companyCase.contentHtml)}</div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>`
+  }
 
   return `<div class="app-shell">
     <main>
@@ -608,7 +646,12 @@ export const buildCompaniesPageHtml = (html, pageData) => {
 
 export const buildCompanyCasePageHtml = (html, rawCompanyCase) => {
   html = html.replaceAll(TEMPLATE_SITE_URL, SITE_BASE_URL)
-  const companyCase = resolveCompanyContent(rawCompanyCase)
+  const { contentHtml, ...resolvedCompanyCase } = resolveCompanyContent(rawCompanyCase)
+  // A hidden post only shows the removal notice, so its body is never shipped.
+  const companyCase =
+    contentHtml === undefined || resolvedCompanyCase.isPublic === false
+      ? resolvedCompanyCase
+      : { ...resolvedCompanyCase, contentHtml: sanitizeCompanyPostHtml(contentHtml) }
   const DEFAULT_IMAGE_URL = `${SITE_BASE_URL}/logo.png`
   const path = `/companies/${encodeURIComponent(companyCase.id)}`
   const canonicalUrl = `${SITE_BASE_URL}${path}`
@@ -674,6 +717,12 @@ export const buildCompanyCasePageHtml = (html, rawCompanyCase) => {
     ],
   })
 
+  getCompanyPostFontHrefs(companyCase.contentHtml ?? '').forEach((href) => {
+    nextHtml = upsertHeadTag(
+      nextHtml,
+      `<link rel="stylesheet" href="${escapeHtml(href)}" data-company-post-font="${escapeHtml(href)}" />`,
+    )
+  })
   nextHtml = replaceOrInsertBootstrapData(nextHtml, {
     kind: 'detail',
     item: companyCase,

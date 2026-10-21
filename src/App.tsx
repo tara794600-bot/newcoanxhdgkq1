@@ -1,4 +1,4 @@
-import { type CSSProperties, type FormEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, type FormEvent, type MouseEvent, Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
 import { FirebaseError } from 'firebase/app'
 import {
   createUserWithEmailAndPassword,
@@ -20,6 +20,7 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
+  writeBatch,
 } from 'firebase/firestore'
 import { deleteObject, getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage'
 import heroImg from './assets/hero.png'
@@ -38,11 +39,16 @@ import law2Img from './assets/law2.png'
 import law3Img from './assets/law3.png'
 import bannerImg from './assets/banner.png'
 import { auth, db, isFirebaseConfigured, storage } from './firebase'
-import { CompanyContentPreview } from './components/CompanyContentPreview'
+import { CompanyPostContent } from './components/CompanyPostContent'
+import type { CompanyPostPayload, CompanyPostSource } from './components/CompanyPostEditor'
 import { resolveCompanyContent } from '../shared/company-content.js'
+import { getCompanyPostImageUrls } from '../shared/company-post.js'
 import { CONTENT_SITE } from '../shared/site.js'
 import { DEFAULT_SEO_KEYWORDS, SEO_META_BY_ROUTE } from '../shared/page-meta.js'
 import './App.css'
+
+// The blog editor is only used by admins, so it loads on demand.
+const CompanyPostEditor = lazy(() => import('./components/CompanyPostEditor'))
 
 type PageRoute = 'home' | 'lawyers' | 'companies' | 'admin'
 type AuthViewMode = 'login' | 'signup'
@@ -78,7 +84,7 @@ type RollingDisplayCase = RollingCase & {
 
 type RollingDisplayItem = RollingImageCard | RollingDisplayCase
 
-type CompanyVisibility = 'public' | 'phone' | 'searchBlocked'
+export type CompanyVisibility = 'public' | 'phone' | 'searchBlocked'
 
 type CompanyCase = {
   id: string
@@ -88,6 +94,9 @@ type CompanyCase = {
   image: string
   isPublic: boolean
   isSearchBlocked: boolean
+  // Posts written in the blog editor keep their HTML body in companyCaseContents.
+  hasRichContent?: boolean
+  contentHtml?: string
 }
 
 type CompanyPageBootstrap =
@@ -646,7 +655,9 @@ const isCompanyCase = (value: unknown): value is CompanyCase => {
       (field) => typeof field === 'string' && field.trim().length > 0,
     ) &&
     typeof item.isPublic === 'boolean' &&
-    typeof item.isSearchBlocked === 'boolean'
+    typeof item.isSearchBlocked === 'boolean' &&
+    (item.hasRichContent === undefined || typeof item.hasRichContent === 'boolean') &&
+    (item.contentHtml === undefined || typeof item.contentHtml === 'string')
   )
 }
 
@@ -1200,6 +1211,7 @@ const COMPANY_CASE_LIMITS = {
   name: 80,
   service: 80,
   description: 2000,
+  html: 300000,
 }
 
 const CONSULTATION_LIMITS = {
@@ -1264,6 +1276,29 @@ const deleteCaseImageIfManaged = async (imageUrl: string) => {
 
   await deleteObject(storageRef(storage, normalizedImageUrl))
   return true
+}
+
+// Deletes every managed image a post no longer uses. An image that is already
+// gone counts as removed, so retrying a cleanup never reports a failure.
+const deleteManagedImages = async (imageUrls: string[]) => {
+  const results = await Promise.allSettled(
+    Array.from(new Set(imageUrls.filter(Boolean))).map((imageUrl) => deleteCaseImageIfManaged(imageUrl)),
+  )
+  let removed = 0
+  let failed = 0
+
+  results.forEach((result) => {
+    if (result.status === 'fulfilled') {
+      removed += result.value ? 1 : 0
+    } else if (result.reason instanceof FirebaseError && result.reason.code === 'storage/object-not-found') {
+      removed += 1
+    } else {
+      console.error(result.reason)
+      failed += 1
+    }
+  })
+
+  return { removed, failed }
 }
 
 const toUploadErrorMessage = (error: unknown, fallbackMessage: string) => {
@@ -1359,7 +1394,6 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
   )
   const rollingTrackRef = useRef<HTMLDivElement | null>(null)
   const rollingImageInputRef = useRef<HTMLInputElement | null>(null)
-  const companyImageInputRef = useRef<HTMLInputElement | null>(null)
   const quickFormSectionRef = useRef<HTMLElement | null>(null)
   const heroStatsBarRef = useRef<HTMLDivElement | null>(null)
   const companyDetailImageRef = useRef<HTMLDivElement | null>(null)
@@ -1407,14 +1441,14 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
   const [rollingResultInput, setRollingResultInput] = useState('')
   const [rollingImageFile, setRollingImageFile] = useState<File | null>(null)
   const [rollingUploadBusy, setRollingUploadBusy] = useState(false)
-  const [companyNameInput, setCompanyNameInput] = useState('')
-  const [companyServiceInput, setCompanyServiceInput] = useState('')
-  const [companyDescriptionInput, setCompanyDescriptionInput] = useState('')
-  const [companyImageFile, setCompanyImageFile] = useState<File | null>(null)
-  const [companyVisibilityInput, setCompanyVisibilityInput] = useState<CompanyVisibility>('public')
-  const [companyUploadBusy, setCompanyUploadBusy] = useState(false)
+  const [companyEditorSource, setCompanyEditorSource] = useState<CompanyPostSource | null>(null)
+  const [companyEditorLoadingId, setCompanyEditorLoadingId] = useState('')
+  const [companyPostContent, setCompanyPostContent] = useState<{
+    id: string
+    html: string
+    status: 'loading' | 'ready' | 'error'
+  } | null>(null)
   const [companyVisibilityBusyId, setCompanyVisibilityBusyId] = useState('')
-  const [companyEditingCaseId, setCompanyEditingCaseId] = useState('')
   const [adminCompanySearchInput, setAdminCompanySearchInput] = useState('')
   const [adminRollingCurrentPage, setAdminRollingCurrentPage] = useState(1)
   const [adminCompanyCurrentPage, setAdminCompanyCurrentPage] = useState(1)
@@ -1561,6 +1595,23 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
     () => companyCases.find((item) => item.id === selectedCompanyCaseId) ?? null,
     [companyCases, selectedCompanyCaseId],
   )
+  const companyServiceSuggestions = useMemo(
+    () => Array.from(new Set(adminCompanyCases.map((item) => item.service))).slice(0, 100),
+    [adminCompanyCases],
+  )
+  // Server-rendered detail pages already include the post body; otherwise it is
+  // fetched separately so list pages never download every post's HTML.
+  const selectedCompanyPostId =
+    selectedCompanyCase?.hasRichContent && selectedCompanyCase.isPublic && selectedCompanyCase.contentHtml === undefined
+      ? selectedCompanyCase.id
+      : ''
+  const selectedCompanyPostHtml = selectedCompanyCase?.hasRichContent
+    ? (selectedCompanyCase.contentHtml ??
+      (companyPostContent?.id === selectedCompanyCase.id ? companyPostContent.html : ''))
+    : ''
+  const selectedCompanyPostLoading =
+    Boolean(selectedCompanyPostId) &&
+    (companyPostContent?.id !== selectedCompanyPostId || companyPostContent?.status === 'loading')
 
   useEffect(() => {
     setAdminCompanyCurrentPage(1)
@@ -1787,7 +1838,7 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
       resizeObserver.disconnect()
       window.removeEventListener('resize', updateDetailLayout)
     }
-  }, [route, selectedCompanyCase])
+  }, [route, selectedCompanyCase, selectedCompanyPostLoading])
 
   useEffect(() => {
     if (route !== 'home') {
@@ -2246,10 +2297,11 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
           const image = toTrimmedString(data.image) || toTrimmedString(data.imageUrl) || logoImg
           const isPublic = data.isPublic !== false
           const isSearchBlocked = data.isSearchBlocked === true
+          const hasRichContent = data.hasRichContent === true
 
           setCompanyCases(
             name && service && description
-              ? [{ id: snapshot.id, name, service, description, image, isPublic, isSearchBlocked }]
+              ? [{ id: snapshot.id, name, service, description, image, isPublic, isSearchBlocked, hasRichContent }]
               : [],
           )
           setCompanyCasesLoaded(true)
@@ -2303,6 +2355,7 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
               image,
               isPublic: data.isPublic !== false,
               isSearchBlocked: data.isSearchBlocked === true,
+              hasRichContent: data.hasRichContent === true,
             }
           })
           .filter((item) => item !== null)
@@ -2326,6 +2379,37 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
       unsubscribe()
     }
   }, [landingPowerlinkKeyword, route, selectedCompanyCaseId])
+
+  useEffect(() => {
+    if (route !== 'companies' || !selectedCompanyPostId || !isFirebaseConfigured) {
+      return
+    }
+
+    let active = true
+    setCompanyPostContent({ id: selectedCompanyPostId, html: '', status: 'loading' })
+
+    void getDoc(doc(db, 'companyCaseContents', selectedCompanyPostId))
+      .then((snapshot) => {
+        if (active) {
+          setCompanyPostContent({
+            id: selectedCompanyPostId,
+            html: toTrimmedString(snapshot.data()?.html),
+            status: 'ready',
+          })
+        }
+      })
+      .catch((error) => {
+        console.error(error)
+
+        if (active) {
+          setCompanyPostContent({ id: selectedCompanyPostId, html: '', status: 'error' })
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [route, selectedCompanyPostId])
 
   const clearAdminFeedback = () => {
     setAdminNotice('')
@@ -2957,149 +3041,143 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
     }
   }
 
-  const resetCompanyCaseForm = () => {
-    setCompanyEditingCaseId('')
-    setCompanyNameInput('')
-    setCompanyServiceInput('')
-    setCompanyDescriptionInput('')
-    setCompanyImageFile(null)
-    setCompanyVisibilityInput('public')
-
-    if (companyImageInputRef.current) {
-      companyImageInputRef.current.value = ''
-    }
-  }
-
-  const handleStartEditCompanyCase = (item: CompanyCase) => {
+  const handleOpenCompanyPostEditor = () => {
     clearAdminFeedback()
-    setCompanyEditingCaseId(item.id)
-    setCompanyNameInput(item.name)
-    setCompanyServiceInput(item.service)
-    setCompanyDescriptionInput(item.description)
-    setCompanyImageFile(null)
-    setCompanyVisibilityInput(getCompanyVisibility(item))
-
-    if (companyImageInputRef.current) {
-      companyImageInputRef.current.value = ''
-    }
-
-    window.requestAnimationFrame(() => {
-      window.scrollTo({ top: 0, behavior: 'smooth' })
+    setCompanyEditorSource({
+      caseId: '',
+      name: '',
+      service: '',
+      visibility: 'public',
+      html: '',
+      description: '',
+      image: '',
     })
   }
 
-  const handleAddCompanyCase = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const handleStartEditCompanyCase = async (item: CompanyCase) => {
     clearAdminFeedback()
+    let html = ''
 
-    if (!isStaff || !currentUser) {
-      setAdminError('관리자 로그인 후 이용해주세요.')
-      return
+    if (item.hasRichContent) {
+      setCompanyEditorLoadingId(item.id)
+
+      try {
+        const snapshot = await getDoc(doc(db, 'companyCaseContents', item.id))
+        html = toTrimmedString(snapshot.data()?.html)
+      } catch (error) {
+        console.error(error)
+        setAdminError('게시글 본문을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.')
+        return
+      } finally {
+        setCompanyEditorLoadingId('')
+      }
     }
 
-    const name = companyNameInput.trim()
-    const service = companyServiceInput.trim()
-    const description = companyDescriptionInput.trim()
-    const imageFile = companyImageFile
-    const editingCase = companyEditingCaseId
-      ? adminCompanyCases.find((item) => item.id === companyEditingCaseId) ?? null
-      : null
+    // Older posts without a stored body open with their image and text
+    // converted into editor blocks.
+    setCompanyEditorSource({
+      caseId: item.id,
+      name: item.name,
+      service: item.service,
+      visibility: getCompanyVisibility(item),
+      html,
+      description: item.description,
+      image: item.image,
+    })
+  }
 
-    if (companyEditingCaseId && !editingCase) {
-      setAdminError('수정할 사기업체 정보를 찾을 수 없습니다.')
-      return
+  const handleUploadCompanyPostImage = async (file: File) => {
+    if (!currentUser) {
+      throw new Error('관리자 로그인 후 이용해주세요.')
     }
-
-    if (!name || !service || !description || (!imageFile && !editingCase)) {
-      setAdminError('사기업체 항목을 모두 입력해주세요.')
-      return
-    }
-
-    if (name.length > COMPANY_CASE_LIMITS.name) {
-      setAdminError(`업체명은 ${COMPANY_CASE_LIMITS.name}자 이하로 입력해주세요.`)
-      return
-    }
-
-    if (service.length > COMPANY_CASE_LIMITS.service) {
-      setAdminError(`유형은 ${COMPANY_CASE_LIMITS.service}자 이하로 입력해주세요.`)
-      return
-    }
-
-    if (description.length > COMPANY_CASE_LIMITS.description) {
-      setAdminError(`설명은 ${COMPANY_CASE_LIMITS.description}자 이하로 입력해주세요.`)
-      return
-    }
-
-    setCompanyUploadBusy(true)
 
     try {
-      let image = editingCase?.image ?? ''
-
-      if (imageFile) {
-        image = await uploadCaseImage({
-          file: imageFile,
-          user: currentUser,
-          bucketFolder: 'companyCases',
-        })
-      }
-
-      if (editingCase) {
-        await updateDoc(doc(db, 'companyCases', editingCase.id), {
-          name,
-          service,
-          description,
-          image,
-          isPublic: companyVisibilityInput !== 'phone',
-          isSearchBlocked: companyVisibilityInput === 'searchBlocked',
-          updatedAt: serverTimestamp(),
-        })
-
-        resetCompanyCaseForm()
-
-        if (imageFile && image !== editingCase.image) {
-          try {
-            await deleteCaseImageIfManaged(editingCase.image)
-          } catch (imageDeleteError) {
-            console.error(imageDeleteError)
-            setAdminNotice(
-              '사기업체 정보는 수정했지만 기존 업로드 이미지 삭제는 실패했습니다. Storage Rules를 확인해주세요.',
-            )
-            return
-          }
-        }
-
-        setAdminNotice('사기업체 정보를 수정했습니다.')
-        return
-      }
-
-      await addDoc(collection(db, 'companyCases'), {
-        name,
-        service,
-        description,
-        image,
-        isPublic: companyVisibilityInput !== 'phone',
-        isSearchBlocked: companyVisibilityInput === 'searchBlocked',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        createdBy: currentUser.uid,
-      })
-
-      resetCompanyCaseForm()
-      setAdminCompanyCurrentPage(1)
-      setAdminNotice('사기업체 정보를 추가했습니다.')
+      return await uploadCaseImage({ file, user: currentUser, bucketFolder: 'companyCases' })
     } catch (error) {
       console.error(error)
-      setAdminError(
+      throw new Error(toUploadErrorMessage(error, '사진 업로드에 실패했습니다.'))
+    }
+  }
+
+  const handleDiscardCompanyPostImages = (imageUrls: string[]) => {
+    void deleteManagedImages(imageUrls)
+  }
+
+  // The editor shows these errors itself, so failures are thrown back to it
+  // instead of being written to the admin feedback hidden behind the editor.
+  const handlePublishCompanyPost = async (post: CompanyPostPayload) => {
+    const source = companyEditorSource
+
+    if (!isStaff || !currentUser || !source) {
+      throw new Error('관리자 로그인 후 이용해주세요.')
+    }
+
+    const editingCase = source.caseId ? adminCompanyCases.find((item) => item.id === source.caseId) ?? null : null
+
+    if (source.caseId && !editingCase) {
+      throw new Error('수정할 사기업체 정보를 찾을 수 없습니다.')
+    }
+
+    const caseFields = {
+      name: post.name,
+      service: post.service,
+      description: post.description,
+      image: post.image,
+      isPublic: post.visibility !== 'phone',
+      isSearchBlocked: post.visibility === 'searchBlocked',
+      hasRichContent: true,
+    }
+
+    try {
+      const batch = writeBatch(db)
+      const caseRef = editingCase ? doc(db, 'companyCases', editingCase.id) : doc(collection(db, 'companyCases'))
+
+      if (editingCase) {
+        batch.update(caseRef, { ...caseFields, updatedAt: serverTimestamp() })
+      } else {
+        batch.set(caseRef, {
+          ...caseFields,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          createdBy: currentUser.uid,
+        })
+      }
+
+      batch.set(doc(db, 'companyCaseContents', caseRef.id), {
+        html: post.html,
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser.uid,
+      })
+      await batch.commit()
+    } catch (error) {
+      console.error(error)
+      throw new Error(
         toUploadErrorMessage(
           error,
-          companyEditingCaseId
-            ? '사기업체 정보 수정에 실패했습니다. Firebase 권한과 연결 상태를 확인해주세요.'
-            : '사기업체 정보 저장에 실패했습니다. Firebase 권한과 연결 상태를 확인해주세요.',
+          editingCase
+            ? '사기업체 게시글 수정에 실패했습니다. Firebase 권한과 연결 상태를 확인해주세요.'
+            : '사기업체 게시글 발행에 실패했습니다. Firebase 권한과 연결 상태를 확인해주세요.',
         ),
       )
-    } finally {
-      setCompanyUploadBusy(false)
     }
+
+    setCompanyEditorSource(null)
+
+    if (!editingCase) {
+      setAdminCompanyCurrentPage(1)
+      setAdminNotice('사기업체 게시글을 발행했습니다.')
+      return
+    }
+
+    const publishedImages = new Set(getCompanyPostImageUrls(post.html))
+    const { failed } = await deleteManagedImages(
+      [editingCase.image, ...getCompanyPostImageUrls(source.html)].filter((imageUrl) => !publishedImages.has(imageUrl)),
+    )
+    setAdminNotice(
+      failed
+        ? '사기업체 게시글은 수정했지만 빠진 사진 일부를 삭제하지 못했습니다. Storage Rules를 확인해주세요.'
+        : '사기업체 게시글을 수정했습니다.',
+    )
   }
 
   const handleSetCompanyCaseVisibility = async (item: CompanyCase, visibility: CompanyVisibility) => {
@@ -3136,10 +3214,6 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
         ),
       )
 
-      if (companyEditingCaseId === item.id) {
-        setCompanyVisibilityInput(visibility)
-      }
-
       setAdminNotice(`사기업체 게시물을 ${getCompanyVisibilityLabel(visibility)} 상태로 변경했습니다.`)
     } catch (error) {
       console.error(error)
@@ -3149,7 +3223,7 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
     }
   }
 
-  const handleDeleteCompanyCase = async (id: string, imageUrl: string) => {
+  const handleDeleteCompanyCase = async (item: CompanyCase) => {
     clearAdminFeedback()
 
     if (!isStaff) {
@@ -3158,27 +3232,25 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
     }
 
     try {
-      await deleteDoc(doc(db, 'companyCases', id))
+      const contentRef = doc(db, 'companyCaseContents', item.id)
+      const contentImages = item.hasRichContent ? getCompanyPostImageUrls((await getDoc(contentRef)).data()?.html) : []
+      const batch = writeBatch(db)
+      batch.delete(doc(db, 'companyCases', item.id))
 
-      let removedManagedImage = false
-
-      try {
-        removedManagedImage = await deleteCaseImageIfManaged(imageUrl)
-      } catch (imageDeleteError) {
-        console.error(imageDeleteError)
-        setAdminNotice(
-          '사기업체 정보는 삭제했지만 업로드 이미지 삭제는 실패했습니다. Storage Rules를 확인해주세요.',
-        )
-        if (companyEditingCaseId === id) {
-          resetCompanyCaseForm()
-        }
-        return
+      if (item.hasRichContent) {
+        batch.delete(contentRef)
       }
 
-      if (companyEditingCaseId === id) {
-        resetCompanyCaseForm()
-      }
-      setAdminNotice(removedManagedImage ? '사기업체 정보와 업로드 이미지를 삭제했습니다.' : '사기업체 정보를 삭제했습니다.')
+      await batch.commit()
+
+      const { removed, failed } = await deleteManagedImages([item.image, ...contentImages])
+      setAdminNotice(
+        failed
+          ? '사기업체 정보는 삭제했지만 업로드 이미지 삭제는 실패했습니다. Storage Rules를 확인해주세요.'
+          : removed
+            ? '사기업체 정보와 업로드 이미지를 삭제했습니다.'
+            : '사기업체 정보를 삭제했습니다.',
+      )
     } catch (error) {
       console.error(error)
       setAdminError('사기업체 정보 삭제에 실패했습니다.')
@@ -3477,105 +3549,21 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
               </article>
 
               <article className="admin-card">
-                <h3>{companyEditingCaseId ? '사기업체 영역 수정' : '사기업체 영역 추가'}</h3>
-                <p>
-                  {companyEditingCaseId
-                    ? '수정할 내용을 입력하세요. 이미지 파일을 새로 선택하면 기존 이미지가 교체됩니다.'
-                    : '사기업체 페이지에 노출할 정보를 입력하고 이미지 파일을 올리면 카드로 자동 생성됩니다.'}
-                </p>
-
-                <form className="admin-form" onSubmit={handleAddCompanyCase}>
-                  <label>
-                    업체명
-                    <input
-                      type="text"
-                      value={companyNameInput}
-                      onChange={(event) => setCompanyNameInput(event.target.value)}
-                      placeholder="예: A투자 운영조직"
-                      maxLength={COMPANY_CASE_LIMITS.name}
-                      required
-                    />
-                  </label>
-                  <label>
-                    유형
-                    <input
-                      type="text"
-                      value={companyServiceInput}
-                      onChange={(event) => setCompanyServiceInput(event.target.value)}
-                      placeholder="예: 코인 리딩방 사기"
-                      maxLength={COMPANY_CASE_LIMITS.service}
-                      required
-                    />
-                  </label>
-                  <label>
-                    설명
-                    <textarea
-                      rows={4}
-                      value={companyDescriptionInput}
-                      onChange={(event) => setCompanyDescriptionInput(event.target.value)}
-                      placeholder="피해유형 또는 진행상태를 입력하세요."
-                      maxLength={COMPANY_CASE_LIMITS.description}
-                      required
-                    />
-                  </label>
-                  <CompanyContentPreview
-                    name={companyNameInput}
-                    service={companyServiceInput}
-                    description={companyDescriptionInput}
-                  />
-                  <label className="admin-visibility-field">
-                    게시 상태
-                    <select
-                      value={companyVisibilityInput}
-                      onChange={(event) => setCompanyVisibilityInput(event.target.value as CompanyVisibility)}
-                      disabled={companyUploadBusy}
-                    >
-                      {COMPANY_VISIBILITY_OPTIONS.map((option) => (
-                        <option value={option.value} key={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                    <small>
-                      {
-                        COMPANY_VISIBILITY_OPTIONS.find((option) => option.value === companyVisibilityInput)
-                          ?.description
-                      }
-                    </small>
-                  </label>
-                  <label>
-                    {companyEditingCaseId ? '이미지 파일 (선택)' : '이미지 파일'}
-                    <input
-                      ref={companyImageInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={(event) => setCompanyImageFile(event.target.files?.[0] ?? null)}
-                      required={!companyEditingCaseId}
-                      disabled={companyUploadBusy}
-                    />
-                  </label>
-                  <div className="admin-form-actions">
-                    <button type="submit" disabled={companyUploadBusy}>
-                      {companyUploadBusy
-                        ? companyEditingCaseId
-                          ? '수정 중...'
-                          : '업로드 중...'
-                        : companyEditingCaseId
-                          ? '수정 완료'
-                          : '사기업체 영역 추가'}
-                    </button>
-                    {companyEditingCaseId ? (
-                      <button
-                        type="button"
-                        className="admin-form-secondary"
-                        onClick={resetCompanyCaseForm}
-                        disabled={companyUploadBusy}
-                      >
-                        취소
-                      </button>
-                    ) : null}
+                <div className="admin-card-head">
+                  <div>
+                    <h3>사기업체 게시글</h3>
+                    <p>
+                      블로그 글쓰기처럼 사진, 스티커, 인용구, 구분선, 장소, 링크, 일정, 소스코드, 표를 넣어 게시글을
+                      작성합니다. 본문의 대표 사진(기본: 첫 번째 사진)이 목록 썸네일로 사용됩니다.
+                    </p>
                   </div>
-                </form>
+                  <button type="button" className="admin-write-button" onClick={handleOpenCompanyPostEditor}>
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M4 20l1-4 11-11 3 3-11 11-4 1zM14 7l3 3" />
+                    </svg>
+                    글쓰기
+                  </button>
+                </div>
 
                 <div className="admin-list-wrap">
                   <div className="admin-list-title-row">
@@ -3634,10 +3622,10 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
                                   <div className="admin-item-actions">
                                     <button
                                       type="button"
-                                      onClick={() => handleStartEditCompanyCase(item)}
-                                      disabled={companyVisibilityBusyId === item.id}
+                                      onClick={() => void handleStartEditCompanyCase(item)}
+                                      disabled={companyVisibilityBusyId === item.id || Boolean(companyEditorLoadingId)}
                                     >
-                                      수정
+                                      {companyEditorLoadingId === item.id ? '불러오는 중...' : '수정'}
                                     </button>
                                     {COMPANY_VISIBILITY_OPTIONS.map((option) => (
                                       <button
@@ -3654,7 +3642,7 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
                                     ))}
                                     <button
                                       type="button"
-                                      onClick={() => handleDeleteCompanyCase(item.id, item.image)}
+                                      onClick={() => handleDeleteCompanyCase(item)}
                                       disabled={companyVisibilityBusyId === item.id}
                                     >
                                       삭제
@@ -3752,6 +3740,22 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
                 </div>
               </article>
             </div>
+
+            {companyEditorSource ? (
+              <Suspense fallback={<div className="company-post-editor-loading">편집기를 불러오는 중입니다.</div>}>
+                <CompanyPostEditor
+                  key={companyEditorSource.caseId || 'new'}
+                  source={companyEditorSource}
+                  visibilityOptions={COMPANY_VISIBILITY_OPTIONS}
+                  serviceSuggestions={companyServiceSuggestions}
+                  limits={COMPANY_CASE_LIMITS}
+                  onUploadImage={handleUploadCompanyPostImage}
+                  onDiscardImages={handleDiscardCompanyPostImages}
+                  onPublish={handlePublishCompanyPost}
+                  onClose={() => setCompanyEditorSource(null)}
+                />
+              </Suspense>
+            ) : null}
           </section>
         )}
 
@@ -3849,7 +3853,13 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
                               <div className="company-detail-copy">
                                 <p className="company-detail-service">{item.service}</p>
                                 <h3>{item.name}</h3>
-                                <p className="company-detail-description">{item.description}</p>
+                                <p
+                                  className={`company-detail-description${
+                                    item.hasRichContent ? ' company-detail-summary' : ''
+                                  }`}
+                                >
+                                  {item.description}
+                                </p>
                                 <button type="button" className="company-detail-cta" onClick={moveToQuickFormSection}>
                                   신청 바로가기
                                 </button>
@@ -4126,28 +4136,48 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
                     </div>
                   ) : (
                     <>
-                    <article className="company-detail">
-                      <a className="company-detail-back" href={ROUTE_PATHS.companies}>
-                        목록으로
-                      </a>
-                      <div
-                        className={`company-detail-layout ${
-                          companyDetailStacked ? 'company-detail-layout-stacked' : ''
-                        }`}
-                      >
-                        <div className="company-detail-image-wrap" ref={companyDetailImageRef}>
-                          <img src={selectedCompanyCase.image} alt={`${selectedCompanyCase.name} 이미지`} />
-                        </div>
-                        <div className="company-detail-copy" ref={companyDetailCopyRef}>
+                    {selectedCompanyPostLoading ? (
+                      <div className="company-detail company-detail-empty">
+                        <p>게시물을 불러오는 중입니다.</p>
+                      </div>
+                    ) : selectedCompanyPostHtml ? (
+                      <article className="company-detail company-post">
+                        <a className="company-detail-back" href={ROUTE_PATHS.companies}>
+                          목록으로
+                        </a>
+                        <header className="company-post-head">
                           <p className="company-detail-service">{selectedCompanyCase.service}</p>
                           <h1>{selectedCompanyCase.name}</h1>
-                          <p className="company-detail-description">{selectedCompanyCase.description}</p>
-                          <button type="button" className="company-detail-cta" onClick={moveToQuickFormSection}>
-                            신청 바로가기
-                          </button>
+                        </header>
+                        <CompanyPostContent className="company-post-body" html={selectedCompanyPostHtml} />
+                        <button type="button" className="company-detail-cta company-post-cta" onClick={moveToQuickFormSection}>
+                          신청 바로가기
+                        </button>
+                      </article>
+                    ) : (
+                      <article className="company-detail">
+                        <a className="company-detail-back" href={ROUTE_PATHS.companies}>
+                          목록으로
+                        </a>
+                        <div
+                          className={`company-detail-layout ${
+                            companyDetailStacked ? 'company-detail-layout-stacked' : ''
+                          }`}
+                        >
+                          <div className="company-detail-image-wrap" ref={companyDetailImageRef}>
+                            <img src={selectedCompanyCase.image} alt={`${selectedCompanyCase.name} 이미지`} />
+                          </div>
+                          <div className="company-detail-copy" ref={companyDetailCopyRef}>
+                            <p className="company-detail-service">{selectedCompanyCase.service}</p>
+                            <h1>{selectedCompanyCase.name}</h1>
+                            <p className="company-detail-description">{selectedCompanyCase.description}</p>
+                            <button type="button" className="company-detail-cta" onClick={moveToQuickFormSection}>
+                              신청 바로가기
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    </article>
+                      </article>
+                    )}
 
                     <section className="company-detail-kakao-section" aria-label="전화 및 카카오톡 상담 배너">
                       <a
