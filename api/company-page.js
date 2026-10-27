@@ -23,6 +23,13 @@ const COMPANY_CASES_PER_PAGE = 40
 const COMPANY_SEARCH_MAX_LENGTH = 120
 const PAGINATION_CRAWL_SEGMENTS = 8
 const COMPANY_ALERT_PHONE_NUMBER = '1551-7203'
+// Posts written before this domain moved to its own Firebase project (2026-10-16)
+// stay in the previous project and are still linked from search results. Its
+// companyCases are publicly readable with the web API key it ships to browsers.
+const LEGACY_COMPANY_CASES_URL =
+  'https://firestore.googleapis.com/v1/projects/newcoanxhdgkq/databases/(default)/documents/companyCases'
+const LEGACY_FIREBASE_API_KEY = 'AIzaSyBFn70MUVeEnfUxwrNVdc1o8Q-xP3g6OkM'
+const LEGACY_REQUEST_TIMEOUT_MS = 5000
 
 const toTrimmedString = (value) => (typeof value === 'string' ? value.trim() : '')
 
@@ -363,12 +370,43 @@ const mapCompanyCase = (snapshot) => {
   }
 }
 
+const fromFirestoreRestValue = (value = {}) => {
+  if ('stringValue' in value) return value.stringValue
+  if ('booleanValue' in value) return value.booleanValue
+  if ('timestampValue' in value) return value.timestampValue
+  return undefined
+}
+
+const getLegacyCompanyCase = async (id) => {
+  const response = await fetch(
+    `${LEGACY_COMPANY_CASES_URL}/${encodeURIComponent(id)}?key=${LEGACY_FIREBASE_API_KEY}`,
+    { signal: AbortSignal.timeout(LEGACY_REQUEST_TIMEOUT_MS) },
+  )
+
+  // Missing, invalid or no longer shared posts are an ordinary not-found page.
+  if ([400, 403, 404].includes(response.status)) {
+    return null
+  }
+
+  // Other failures surface as 503 so crawlers retry instead of dropping the page.
+  if (!response.ok) {
+    throw new Error(`이전 Firebase 게시글 조회 실패 (${response.status})`)
+  }
+
+  const { fields = {} } = await response.json()
+  const data = Object.fromEntries(
+    Object.entries(fields).map(([key, value]) => [key, fromFirestoreRestValue(value)]),
+  )
+
+  return mapCompanyCase({ id, data: () => data })
+}
+
 const getCompanyCase = async (id) => {
   const app = getFirebaseApp()
   const snapshot = await getFirestore(app).collection('companyCases').doc(id).get()
 
   if (!snapshot.exists) {
-    return null
+    return getLegacyCompanyCase(id)
   }
 
   const companyCase = mapCompanyCase(snapshot)
@@ -742,7 +780,7 @@ export const buildNotFoundPageHtml = (html, requestedPath) => {
   html = html.replaceAll(TEMPLATE_SITE_URL, SITE_BASE_URL)
   const canonicalUrl = `${SITE_BASE_URL}${requestedPath}`
   const title = '페이지를 찾을 수 없습니다 | 법무법인 나란'
-  const content = `<div class="app-shell"><main><section class="section-wrap companies-grid-wrap"><h1>페이지를 찾을 수 없습니다.</h1><a class="company-detail-back" href="/companies">사기업체 게시판으로 이동</a></section></main></div>`
+  const content = `<div class="app-shell"><main><section class="section-wrap companies-grid-wrap"><h1>페이지를 찾을 수 없습니다.</h1><p class="company-detail-deleted-message">현재 페이지는 삭제되었습니다.<br />해당 내용으로 사칭 피해를 보신 분들은 즉시 ${COMPANY_ALERT_PHONE_NUMBER}으로 연락 바랍니다.</p><a class="company-detail-back" href="/companies">사기업체 게시판으로 이동</a></section></main></div>`
 
   let nextHtml = html.replace(/<title>[\s\S]*?<\/title>/i, () => `<title>${escapeHtml(title)}</title>`)
   nextHtml = replaceOrInsertMeta(nextHtml, 'name', 'description', '요청한 페이지를 찾을 수 없습니다.')

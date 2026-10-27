@@ -105,6 +105,7 @@ assert.doesNotMatch(searchHtml, /href="\/companies\/search-blocked-result"/)
 const notFoundHtml = buildNotFoundPageHtml(indexHtml, '/companies/missing')
 assert.match(notFoundHtml, /content="noindex,follow"/)
 assert.match(notFoundHtml, /페이지를 찾을 수 없습니다/)
+assert.match(notFoundHtml, /현재 페이지는 삭제되었습니다\.<br \/>해당 내용으로 사칭 피해를 보신 분들은 즉시 1551-7203으로 연락 바랍니다\./)
 assert.doesNotMatch(notFoundHtml, /<script\s+[^>]*type="module"/)
 
 const sitemap = renderSitemap([
