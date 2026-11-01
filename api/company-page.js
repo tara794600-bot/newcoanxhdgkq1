@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { matchesCompanySearch, resolveCompanyContent } from '../shared/company-content.js'
-import { getCompanyPostFontHrefs, sanitizeCompanyPostHtml } from '../shared/company-post.js'
+import { fillCompanyPostImageAlt, getCompanyPostFontHrefs, sanitizeCompanyPostHtml } from '../shared/company-post.js'
 import { CONTENT_SITE } from '../shared/site.js'
 
 const SITE_BASE_URL = CONTENT_SITE.url
@@ -23,6 +23,8 @@ const COMPANY_CASES_PER_PAGE = 40
 const COMPANY_SEARCH_MAX_LENGTH = 120
 const PAGINATION_CRAWL_SEGMENTS = 8
 const COMPANY_ALERT_PHONE_NUMBER = '1551-7203'
+const RELATED_COMPANY_CASES_LIMIT = 6
+const RELATED_CANDIDATES_PER_SIDE = 12
 // Posts written before this domain moved to its own Firebase project (2026-10-16)
 // stay in the previous project and are still linked from search results. Its
 // companyCases are publicly readable with the web API key it ships to browsers.
@@ -426,6 +428,39 @@ const getCompanyCase = async (id) => {
   }
 }
 
+// Each post links to the posts registered just before and after it, same category
+// first, so links spread across every post instead of all pointing at the newest.
+// Only the neighbours are read, never the whole collection.
+const getRelatedCompanyCases = async (companyCase) => {
+  const createdAt = new Date(companyCase.datePublished)
+
+  if (Number.isNaN(createdAt.getTime())) {
+    return []
+  }
+
+  try {
+    const collectionRef = getFirestore(getFirebaseApp()).collection('companyCases')
+    const [newer, older] = await Promise.all([
+      collectionRef.orderBy('createdAt').startAfter(createdAt).limit(RELATED_CANDIDATES_PER_SIDE).get(),
+      collectionRef.orderBy('createdAt', 'desc').startAfter(createdAt).limit(RELATED_CANDIDATES_PER_SIDE).get(),
+    ])
+    const distance = (item) => Math.abs(new Date(item.datePublished).getTime() - createdAt.getTime())
+    const candidates = [...newer.docs, ...older.docs]
+      .map((item) => mapCompanyCase(item))
+      .filter((item) => item && item.id !== companyCase.id && item.isPublic && !item.isSearchBlocked)
+      .sort((a, b) => distance(a) - distance(b))
+
+    return [
+      ...candidates.filter((item) => item.service === companyCase.service),
+      ...candidates.filter((item) => item.service !== companyCase.service),
+    ].slice(0, RELATED_COMPANY_CASES_LIMIT)
+  } catch (error) {
+    // The post itself still renders; only the related list is left out.
+    console.error('[api/company-page] related error', error)
+    return []
+  }
+}
+
 const getCompaniesPage = async ({ page, searchQuery }) => {
   const app = getFirebaseApp()
   const collectionRef = getFirestore(app).collection('companyCases')
@@ -532,7 +567,34 @@ const renderCompaniesServerContent = (pageData, baseUrl) => {
   </div>`
 }
 
-const renderCompanyCaseServerContent = (companyCase, baseUrl) => {
+const renderRelatedCompanyCases = (relatedCases, baseUrl) => {
+  if (relatedCases.length === 0) {
+    return ''
+  }
+
+  const cards = relatedCases
+    .map(
+      (item) => `<a class="company-card company-card-filled company-card-link" href="${escapeHtml(
+        `/companies/${encodeURIComponent(item.id)}`,
+      )}">
+              <div class="company-card-thumb-wrap">
+                <img src="${escapeHtml(toAbsoluteUrl(item.image, baseUrl) || `${baseUrl}/logo.png`)}" alt="${escapeHtml(
+                  `${item.name} 이미지`,
+                )}" class="company-card-image" loading="lazy" />
+              </div>
+              <p class="company-card-service">${escapeHtml(item.service)}</p>
+              <p class="company-card-name">${escapeHtml(item.name)}</p>
+            </a>`,
+    )
+    .join('\n')
+
+  return `<section class="company-related" aria-labelledby="company-related-title">
+            <h2 id="company-related-title" class="company-related-title">이런 사건도 함께 확인하세요</h2>
+            <div class="companies-grid company-related-grid">${cards}</div>
+          </section>`
+}
+
+const renderCompanyCaseServerContent = (companyCase, baseUrl, relatedCases = []) => {
   const imageUrl = toAbsoluteUrl(companyCase.image, baseUrl) || `${baseUrl}/logo.png`
 
   if (companyCase.contentHtml) {
@@ -549,8 +611,12 @@ const renderCompanyCaseServerContent = (companyCase, baseUrl) => {
               <p class="company-detail-service">${escapeHtml(companyCase.service)}</p>
               <h1>${escapeHtml(companyCase.name)}</h1>
             </header>
-            <div class="se-content company-post-body">${sanitizeCompanyPostHtml(companyCase.contentHtml)}</div>
+            <div class="se-content company-post-body">${fillCompanyPostImageAlt(
+              sanitizeCompanyPostHtml(companyCase.contentHtml),
+              companyCase.name,
+            )}</div>
           </article>
+          ${renderRelatedCompanyCases(relatedCases, baseUrl)}
         </div>
       </section>
     </main>
@@ -577,6 +643,7 @@ const renderCompanyCaseServerContent = (companyCase, baseUrl) => {
               </div>
             </div>
           </article>
+          ${renderRelatedCompanyCases(relatedCases, baseUrl)}
         </div>
       </section>
     </main>
@@ -682,9 +749,19 @@ export const buildCompaniesPageHtml = (html, pageData) => {
   return nextHtml
 }
 
-export const buildCompanyCasePageHtml = (html, rawCompanyCase) => {
+export const buildCompanyCasePageHtml = (html, rawCompanyCase, rawRelatedCases = []) => {
   html = html.replaceAll(TEMPLATE_SITE_URL, SITE_BASE_URL)
   const { contentHtml, ...resolvedCompanyCase } = resolveCompanyContent(rawCompanyCase)
+  // A hidden post only shows the removal notice, so it links to nothing else.
+  const relatedCases =
+    resolvedCompanyCase.isPublic === false
+      ? []
+      : rawRelatedCases.map((item) => ({
+          id: item.id,
+          name: resolveCompanyContent(item).name,
+          service: item.service,
+          image: item.image,
+        }))
   // A hidden post only shows the removal notice, so its body is never shipped.
   const companyCase =
     contentHtml === undefined || resolvedCompanyCase.isPublic === false
@@ -764,12 +841,13 @@ export const buildCompanyCasePageHtml = (html, rawCompanyCase) => {
   nextHtml = replaceOrInsertBootstrapData(nextHtml, {
     kind: 'detail',
     item: companyCase,
+    relatedItems: relatedCases,
   })
   nextHtml = replaceRootContent(
     nextHtml,
     companyCase.isPublic === false
       ? renderPrivateCompanyCaseServerContent(companyCase)
-      : renderCompanyCaseServerContent(companyCase, SITE_BASE_URL),
+      : renderCompanyCaseServerContent(companyCase, SITE_BASE_URL, relatedCases),
   )
   nextHtml = removeHomepageOnlyStructuredData(nextHtml)
 
@@ -870,11 +948,13 @@ export default async function handler(req, res) {
         return sendHtml(req, res, 404, buildNotFoundPageHtml(indexHtml, requestedPath), 'no-store')
       }
 
+      const relatedCases = companyCase.isPublic ? await getRelatedCompanyCases(companyCase) : []
+
       return sendHtml(
         req,
         res,
         200,
-        buildCompanyCasePageHtml(indexHtml, companyCase),
+        buildCompanyCasePageHtml(indexHtml, companyCase, relatedCases),
         'public, s-maxage=300, stale-while-revalidate=3600',
       )
     }

@@ -2486,6 +2486,24 @@ main {
   margin-top: 28px;
 }
 
+.company-related {
+  margin-top: 36px;
+}
+
+.company-related-title {
+  margin: 0 0 16px;
+  color: #1f2734;
+  font-size: clamp(20px, 1.8vw, 26px);
+  font-weight: 800;
+  line-height: 1.35;
+  word-break: keep-all;
+}
+
+/* Six related posts read as two even rows rather than the list's four columns. */
+.companies-grid.company-related-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .company-detail-call {
   display: inline-flex;
   align-items: center;
@@ -2961,6 +2979,39 @@ main {
 
 .footer-meta + .footer-meta {
   margin-top: 4px;
+}
+
+.footer-related {
+  margin-top: 20px;
+}
+
+.footer-related-title {
+  margin: 0;
+  color: #b8bec7;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.footer-related-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.footer-related-list a {
+  color: #8d939d;
+  font-size: 13px;
+  line-height: 1.6;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.footer-related-list a:hover,
+.footer-related-list a:focus-visible {
+  color: #dce5ef;
 }
 
 .footer-admin-actions {

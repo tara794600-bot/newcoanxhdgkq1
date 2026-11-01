@@ -19,4 +19,4 @@ Allow: /
 Disallow: /api/
 
 # 사이트맵
-Sitemap: https://www.naranfintech.com/sitemap.xml
+Sitemap: https://www.xn--naranfintech-t458b147kl8ppf0a.kr/sitemap.xml

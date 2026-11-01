@@ -212,6 +212,23 @@ export const sanitizeCompanyPostHtml = (html) => {
   return output + openTags.reverse().map((name) => `</${name}>`).join('')
 }
 
+// Screenshots are often pasted without a description. Name them after the post
+// so image search can tell which company each one shows; written alts are kept.
+// Expects sanitizeCompanyPostHtml output, where every image starts with src then alt.
+export const fillCompanyPostImageAlt = (safeHtml, title) => {
+  const label = typeof title === 'string' ? title.trim() : ''
+
+  if (!label) {
+    return safeHtml
+  }
+
+  let index = 0
+  return safeHtml.replace(/<img src="([^"]*)" alt="([^"]*)"/g, (match, src, alt) => {
+    index += 1
+    return alt ? match : `<img src="${src}" alt="${escapeAttribute(`${label} 이미지 ${index}`)}"`
+  })
+}
+
 export const companyPostToPlainText = (html) => {
   const text = sanitizeCompanyPostHtml(html)
     .replace(/<br\b[^>]*>/g, '\n')

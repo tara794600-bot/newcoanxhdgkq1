@@ -4,7 +4,7 @@ import { mock } from 'node:test'
 import { deleteApp, initializeApp } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
 import { matchesCompanySearch, resolveCompanyContent } from '../shared/company-content.js'
-import { companyPostToPlainText, getCompanyPostImageUrls, sanitizeCompanyPostHtml, summarizeCompanyPostText } from '../shared/company-post.js'
+import { companyPostToPlainText, fillCompanyPostImageAlt, getCompanyPostImageUrls, sanitizeCompanyPostHtml, summarizeCompanyPostText } from '../shared/company-post.js'
 import { CONTENT_SITE as site } from '../shared/site.js'
 import companyHandler, { buildCompaniesPageHtml, buildCompanyCasePageHtml, buildNotFoundPageHtml } from '../api/company-page.js'
 import sitemapHandler, { renderSitemap } from '../api/sitemap.js'
@@ -88,7 +88,30 @@ assert.doesNotMatch(richBody, /onerror|contenteditable|<script|javascript:|posit
 assert.ok(richDetail.includes(`<h1>${expected.name}</h1>`))
 assert.ok(richDetail.includes('data-company-post-font="https://hangeul.pstatic.net/hangeul_static/css/nanum-gothic.css"'))
 assert.equal(readBootstrap(richDetail).item.contentHtml, sanitizeCompanyPostHtml(richPost.contentHtml))
+assert.ok(richBody.includes(`alt="${expected.name} 이미지 1"`))
 assert.deepEqual(getCompanyPostImageUrls(richPost.contentHtml), [imageUrl])
+
+// Images without a description are named after the post; written ones stay.
+const altSource = sanitizeCompanyPostHtml('<img src="https://a.example/1.png"><img src="https://a.example/2.png" alt="직접 쓴 설명"><img src="https://a.example/3.png">')
+assert.equal(
+  fillCompanyPostImageAlt(altSource, '샘플 "업체"'),
+  '<img src="https://a.example/1.png" alt="샘플 &quot;업체&quot; 이미지 1"><img src="https://a.example/2.png" alt="직접 쓴 설명"><img src="https://a.example/3.png" alt="샘플 &quot;업체&quot; 이미지 3">',
+)
+assert.equal(fillCompanyPostImageAlt(altSource, ''), altSource)
+
+// Related posts render as links under the post and ship to the browser as card data.
+const relatedCard = { id: 'next-post', name: '다음 업체', service: '부업사기', image: '/logo.png', description: '본문' }
+const relatedPage = buildCompanyCasePageHtml(html, original, [relatedCard, { ...relatedCard, id: 'x"y', name: '<b>위험</b>' }])
+assert.ok(relatedPage.includes('<h2 id="company-related-title" class="company-related-title">이런 사건도 함께 확인하세요</h2>'))
+assert.ok(relatedPage.includes('href="/companies/next-post"'))
+assert.ok(relatedPage.includes('<p class="company-card-name">다음 업체 피해 관련 확인 사항</p>'))
+assert.ok(relatedPage.includes('href="/companies/x%22y"'))
+assert.ok(!relatedPage.includes('<b>위험</b>'))
+assert.deepEqual(readBootstrap(relatedPage).relatedItems[0], { id: 'next-post', name: '다음 업체 피해 관련 확인 사항', service: '부업사기', image: '/logo.png' })
+assert.equal(buildCompanyCasePageHtml(html, original).includes('company-related'), false)
+const hiddenRelated = buildCompanyCasePageHtml(html, { ...original, isPublic: false }, [relatedCard])
+assert.equal(hiddenRelated.includes('company-related'), false)
+assert.deepEqual(readBootstrap(hiddenRelated).relatedItems, [])
 assert.equal('contentHtml' in readBootstrap(buildCompanyCasePageHtml(html, { ...richPost, isPublic: false })).item, false)
 assert.equal(buildCompanyCasePageHtml(html, { ...richPost, contentHtml: '' }).includes('company-post-body'), false)
 assert.equal(companyPostToPlainText('<p>첫 줄</p><p><br></p><p>둘째 &amp; <b>셋째</b></p><table><tr><td>가</td><td>나</td></tr></table>'), '첫 줄\n\n둘째 & 셋째\n가 나')
@@ -161,6 +184,55 @@ try {
 } finally {
   mock.restoreAll()
   await deleteApp(richApp)
+}
+
+// The detail entry point reads only the posts registered right before and after
+// this one, then lists the same category first, nearest date first.
+const relatedApp = initializeApp({ projectId: 'related-post-verification' })
+const relatedDoc = (id, service, createdAt, extra = {}) => ({
+  id, exists: true, data: () => ({ ...original, name: `${id} 업체`, service, createdAt: new Date(createdAt), ...extra }),
+})
+const currentDoc = relatedDoc('current-post', '투자사기', '2026-10-20T00:00:00.000Z')
+const newerDocs = [
+  relatedDoc('newer-same', '투자사기', '2026-10-21T00:00:00.000Z'),
+  relatedDoc('newer-other', '부업사기', '2026-10-20T01:00:00.000Z'),
+  relatedDoc('newer-hidden', '투자사기', '2026-10-20T02:00:00.000Z', { isPublic: false }),
+]
+const olderDocs = [
+  relatedDoc('older-same', '투자사기', '2026-10-19T06:00:00.000Z'),
+  relatedDoc('older-blocked', '투자사기', '2026-10-19T12:00:00.000Z', { isSearchBlocked: true }),
+]
+const relatedQueries = []
+mock.method(getFirestore(relatedApp), 'collection', (name) => {
+  assert.equal(name, 'companyCases')
+  return {
+    doc: () => ({ get: async () => currentDoc }),
+    orderBy: (field, direction = 'asc') => ({
+      startAfter: (cursor) => ({
+        limit: (count) => ({
+          get: async () => {
+            relatedQueries.push(`${field} ${direction} ${cursor.toISOString()} ${count}`)
+            return { docs: direction === 'desc' ? olderDocs : newerDocs }
+          },
+        }),
+      }),
+    }),
+  }
+})
+try {
+  const res = response()
+  await companyHandler({ method: 'GET', url: '/api/company-page?id=current-post', headers: {} }, res)
+  assert.equal(res.statusCode, 200)
+  assert.deepEqual(relatedQueries.sort(), [
+    'createdAt asc 2026-10-20T00:00:00.000Z 12',
+    'createdAt desc 2026-10-20T00:00:00.000Z 12',
+  ])
+  assert.deepEqual(readBootstrap(res.body).relatedItems.map((item) => item.id), ['older-same', 'newer-same', 'newer-other'])
+  assert.ok(res.body.includes('href="/companies/older-same"'))
+  assert.doesNotMatch(res.body, /newer-hidden|older-blocked|href="\/companies\/current-post"/)
+} finally {
+  mock.restoreAll()
+  await deleteApp(relatedApp)
 }
 
 // Posts missing here are read from the previous Firebase project, which still

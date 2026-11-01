@@ -99,10 +99,14 @@ type CompanyCase = {
   contentHtml?: string
 }
 
+// Card data for the "이런 사건도 함께 확인하세요" links under a post, chosen by the server.
+type CompanyRelatedCase = Pick<CompanyCase, 'id' | 'name' | 'service' | 'image'>
+
 type CompanyPageBootstrap =
   | {
       kind: 'detail'
       item: CompanyCase
+      relatedItems: CompanyRelatedCase[]
     }
   | {
       kind: 'list'
@@ -151,6 +155,14 @@ const CONTACT_PHONE_NUMBER = '1551-7202'
 const CONTACT_PHONE_TEL = `tel:${CONTACT_PHONE_NUMBER.replace(/[^0-9+]/g, '')}`
 const COMPANY_PHONE_NUMBER = '1551-7203'
 const COMPANY_PHONE_TEL = `tel:${COMPANY_PHONE_NUMBER.replace(/[^0-9+]/g, '')}`
+// 금융사기 피해자가 신고·조회에 바로 쓸 수 있는 공공기관 사이트 (footer 관련 기관 링크)
+const RELATED_SITE_LINKS = [
+  { label: '피싱안심SOS (보이스피싱 신고 1394)', href: 'https://www.counterscam112.go.kr' },
+  { label: '경찰청 사이버범죄 신고시스템', href: 'https://ecrm.police.go.kr' },
+  { label: '금융소비자 정보포털 파인', href: 'https://fine.fss.or.kr' },
+  { label: '대한법률구조공단', href: 'https://www.klac.or.kr' },
+  { label: '대한변호사협회', href: 'https://www.koreanbar.or.kr' },
+] as const
 const GOOGLE_ADS_ID = 'AW-16949684264'
 const GOOGLE_ADS_CONVERSION_SEND_TO = 'AW-16949684264/I91fCL6M-qMcEKjQnpI_'
 const GOOGLE_ADS_SCRIPT_ID = 'google-ads-gtag-script'
@@ -661,6 +673,17 @@ const isCompanyCase = (value: unknown): value is CompanyCase => {
   )
 }
 
+const isCompanyRelatedCase = (value: unknown): value is CompanyRelatedCase => {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const item = value as Partial<CompanyRelatedCase>
+  return [item.id, item.name, item.service, item.image].every(
+    (field) => typeof field === 'string' && field.trim().length > 0,
+  )
+}
+
 const getInitialCompanyPageData = (): CompanyPageBootstrap | null => {
   if (typeof window === 'undefined') return null
   const data = window.__COMPANY_PAGE_DATA__
@@ -670,7 +693,15 @@ const getInitialCompanyPageData = (): CompanyPageBootstrap | null => {
   }
 
   if (data.kind === 'detail') {
-    return isCompanyCase(data.item) ? data : null
+    if (!isCompanyCase(data.item)) {
+      return null
+    }
+
+    // A malformed related list only hides the links, never the post itself.
+    const relatedItems = Array.isArray(data.relatedItems)
+      ? data.relatedItems.filter(isCompanyRelatedCase)
+      : []
+    return { ...data, relatedItems }
   }
 
   if (
@@ -1595,6 +1626,10 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
     () => companyCases.find((item) => item.id === selectedCompanyCaseId) ?? null,
     [companyCases, selectedCompanyCaseId],
   )
+  const selectedCompanyRelatedCases =
+    INITIAL_COMPANY_PAGE_DATA?.kind === 'detail' && INITIAL_COMPANY_PAGE_DATA.item.id === selectedCompanyCaseId
+      ? INITIAL_COMPANY_PAGE_DATA.relatedItems
+      : []
   const companyServiceSuggestions = useMemo(
     () => Array.from(new Set(adminCompanyCases.map((item) => item.service))).slice(0, 100),
     [adminCompanyCases],
@@ -4149,7 +4184,11 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
                           <p className="company-detail-service">{selectedCompanyCase.service}</p>
                           <h1>{selectedCompanyCase.name}</h1>
                         </header>
-                        <CompanyPostContent className="company-post-body" html={selectedCompanyPostHtml} />
+                        <CompanyPostContent
+                          className="company-post-body"
+                          html={selectedCompanyPostHtml}
+                          imageAltTitle={selectedCompanyCase.name}
+                        />
                         <button type="button" className="company-detail-cta company-post-cta" onClick={moveToQuickFormSection}>
                           신청 바로가기
                         </button>
@@ -4197,6 +4236,34 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
                         <img src={kakaoConnectBannerImg} alt="법무법인 나란 카카오톡 무료상담 연결" />
                       </a>
                     </section>
+
+                    {selectedCompanyRelatedCases.length > 0 ? (
+                      <section className="company-related" aria-labelledby="company-related-title">
+                        <h2 id="company-related-title" className="company-related-title">
+                          이런 사건도 함께 확인하세요
+                        </h2>
+                        <div className="companies-grid company-related-grid">
+                          {selectedCompanyRelatedCases.map((item) => (
+                            <a
+                              className="company-card company-card-filled company-card-link"
+                              href={getCompanyCasePath(item.id)}
+                              key={item.id}
+                            >
+                              <div className="company-card-thumb-wrap">
+                                <img
+                                  src={item.image}
+                                  alt={`${item.name} 이미지`}
+                                  className="company-card-image"
+                                  loading="lazy"
+                                />
+                              </div>
+                              <p className="company-card-service">{item.service}</p>
+                              <p className="company-card-name">{item.name}</p>
+                            </a>
+                          ))}
+                        </div>
+                      </section>
+                    ) : null}
                     </>
                   )
                 ) : companyCasesLoaded ? (
@@ -4432,6 +4499,19 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
             본사무소 : 서울 송파구 송파대로167 (문정동 651) | 분사무소 : 서울특별시 도봉구 도봉로 803, 1층
           </p>
           <p className="footer-meta">TEL : {CONTACT_PHONE_NUMBER} | FAX : 02-2054-3451 | 이메일 : naranlawb1@gmail.com</p>
+
+          <nav className="footer-related" aria-label="피해 신고·조회 관련 기관">
+            <p className="footer-related-title">피해 신고·조회 관련 기관</p>
+            <ul className="footer-related-list">
+              {RELATED_SITE_LINKS.map((link) => (
+                <li key={link.href}>
+                  <a href={link.href} target="_blank" rel="noreferrer noopener">
+                    {link.label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
 
           <div className="footer-admin-actions">
             {isStaff ? (
