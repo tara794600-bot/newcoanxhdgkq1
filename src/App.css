@@ -2486,6 +2486,77 @@ main {
   margin-top: 28px;
 }
 
+/* Per-company checklist and FAQ under each post (also server-rendered). */
+.company-guide {
+  margin-top: 28px;
+  border: 1px solid #d8dee5;
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 22px;
+  color: #2c3542;
+}
+
+.company-guide-title {
+  margin: 0 0 12px;
+  color: #1f2734;
+  font-size: clamp(18px, 1.6vw, 22px);
+  font-weight: 800;
+  line-height: 1.4;
+  word-break: keep-all;
+}
+
+.company-guide-title:not(:first-child) {
+  margin-top: 24px;
+}
+
+.company-guide-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 8px;
+  font-size: 15px;
+  line-height: 1.65;
+  word-break: keep-all;
+}
+
+.company-guide-faq {
+  margin: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.company-guide-faq-item dt {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.55;
+  word-break: keep-all;
+}
+
+.company-guide-faq-item dd {
+  margin: 4px 0 0;
+  font-size: 15px;
+  line-height: 1.65;
+  color: #4a5463;
+  word-break: keep-all;
+}
+
+.company-guide-disclaimer {
+  margin: 22px 0 0;
+  border-top: 1px solid #e3e8ee;
+  padding-top: 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #6b7480;
+  word-break: keep-all;
+}
+
+@media (max-width: 640px) {
+  .company-guide {
+    border-radius: 10px;
+    padding: 14px;
+  }
+}
+
 .company-related {
   margin-top: 36px;
 }

@@ -2,6 +2,8 @@ import { cert, getApps, initializeApp } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
 import { CONTENT_SITE as site } from '../shared/site.js'
 import { resolveCompanyContent } from '../shared/company-content.js'
+import { getCompanyCasePath, getCompanySlug } from '../shared/company-slug.js'
+import { getCompanySlugIndex } from '../server/company-slug-index.js'
 
 const RSS_ITEM_LIMIT = 500
 const DESCRIPTION_MAX_LENGTH = 1000
@@ -56,7 +58,7 @@ const summarize = (description) => {
     : characters.join('')
 }
 
-export const getLatestCompanyRssItems = async (collectionRef) => {
+export const getLatestCompanyRssItems = async (collectionRef, slugIndex = null) => {
   const items = []
   const query = collectionRef.orderBy('createdAt', 'desc').limit(RSS_ITEM_LIMIT)
   let cursor = null
@@ -77,7 +79,7 @@ export const getLatestCompanyRssItems = async (collectionRef) => {
       const content = resolveCompanyContent({ name, service, description })
       items.push({
         title: content.name,
-        link: `${site.url}/companies/${encodeURIComponent(doc.id)}`,
+        link: `${site.url}${getCompanyCasePath(getCompanySlug(slugIndex, doc.id))}`,
         description: summarize(content.description),
         category: service,
         publishedAt: toDate(data.createdAt),
@@ -121,7 +123,10 @@ export default async function handler(req, res) {
 
   try {
     const collectionRef = getFirestore(getFirebaseApp()).collection('companyCases')
-    const items = await getLatestCompanyRssItems(collectionRef)
+    // Links use the keyword URLs; without the index they fall back to the
+    // document-id URLs, which redirect to the same pages.
+    const slugIndex = await getCompanySlugIndex(collectionRef).catch(() => null)
+    const items = await getLatestCompanyRssItems(collectionRef, slugIndex)
     const rss = renderRss(items)
 
     res.setHeader('Content-Type', 'application/rss+xml; charset=utf-8')

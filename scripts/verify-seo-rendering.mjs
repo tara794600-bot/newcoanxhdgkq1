@@ -47,6 +47,19 @@ assert.match(detailHtml, /<p class="company-detail-description">첫 번째 줄<\
 assert.match(detailHtml, /<p class="company-detail-description">두 번째 줄<\/p>/)
 assert.match(detailHtml, /<link rel="canonical" href="https:\/\/www\.xn--naranfintech-t458b147kl8ppf0a\.kr\/companies\/sample-one"/)
 assert.match(detailHtml, /"kind":"detail"/)
+assert.match(detailHtml, /<h2 id="company-guide-title" class="company-guide-title">샘플 업체 1 피해가 의심될 때 먼저 할 일<\/h2>/)
+assert.match(detailHtml, /"@type":"FAQPage"/)
+assert.match(detailHtml, /사기 주체로 지칭하지 않으며/)
+assert.doesNotMatch(detailHtml, /homepage-faq-structured-data|단체 채팅방에서 다들 수익 인증/)
+
+// Keyword URLs: links, canonical and list data use the company-name slug.
+const keywordItem = { ...sampleItems[0], id: 'doc-id-1', slug: '더라운지' }
+const keywordList = buildCompaniesPageHtml(indexHtml, { items: [keywordItem], page: 1, searchQuery: '', totalCount: 1, totalPages: 1 })
+assert.ok(keywordList.includes(`href="/companies/${encodeURIComponent('더라운지')}"`))
+assert.ok(keywordList.includes(`"url":"https://www.xn--naranfintech-t458b147kl8ppf0a.kr/companies/${encodeURIComponent('더라운지')}"`))
+const keywordDetail = buildCompanyCasePageHtml(indexHtml, keywordItem, [{ ...sampleItems[1], slug: '샘플-업체-2' }])
+assert.ok(keywordDetail.includes(`<link rel="canonical" href="https://www.xn--naranfintech-t458b147kl8ppf0a.kr/companies/${encodeURIComponent('더라운지')}"`))
+assert.ok(keywordDetail.includes(`href="/companies/${encodeURIComponent('샘플-업체-2')}"`))
 
 const privateDetailHtml = buildCompanyCasePageHtml(indexHtml, {
   ...sampleItems[0],
@@ -54,7 +67,8 @@ const privateDetailHtml = buildCompanyCasePageHtml(indexHtml, {
   isSearchBlocked: false,
 })
 
-assert.match(privateDetailHtml, /<title>샘플 업체 1 피해 관련 확인 사항 \| 사기업체 게시판 \| 법무법인 나란<\/title>/)
+assert.match(privateDetailHtml, /<title>샘플 업체 1 사기 피해 확인 — 지급정지·피해금 반환 절차 \| 법무법인 나란<\/title>/)
+assert.doesNotMatch(privateDetailHtml, /company-guide|FAQPage/)
 assert.match(privateDetailHtml, /content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"/)
 assert.match(privateDetailHtml, /현재 페이지는 삭제되었습니다/)
 assert.match(privateDetailHtml, /해당 내용으로 사칭 피해를 보신 분들은 즉시 1551-7203으로 연락 바랍니다/)

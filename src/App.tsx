@@ -14,12 +14,15 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
+  limit,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
   writeBatch,
 } from 'firebase/firestore'
 import { deleteObject, getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage'
@@ -43,6 +46,21 @@ import { CompanyPostContent } from './components/CompanyPostContent'
 import type { CompanyPostPayload, CompanyPostSource } from './components/CompanyPostEditor'
 import { resolveCompanyContent } from '../shared/company-content.js'
 import { getCompanyPostImageUrls } from '../shared/company-post.js'
+import {
+  SEARCH_RESULT_SECTION_NAME,
+  SEARCH_RESULT_SITE_NAME,
+  buildCompanyCaseStructuredData,
+  getCompanyGuide,
+  getCompanySeoDescription,
+  getCompanySeoKeywords,
+  getCompanySeoTitle,
+} from '../shared/company-seo.js'
+import {
+  buildCompanySlugIndex,
+  getCompanyCasePath,
+  getCompanyNameCandidates,
+  getCompanySlug,
+} from '../shared/company-slug.js'
 import { CONTENT_SITE } from '../shared/site.js'
 import { DEFAULT_SEO_KEYWORDS, SEO_META_BY_ROUTE } from '../shared/page-meta.js'
 import './App.css'
@@ -97,10 +115,21 @@ type CompanyCase = {
   // Posts written in the blog editor keep their HTML body in companyCaseContents.
   hasRichContent?: boolean
   contentHtml?: string
+  // Company name as typed; the detail page lives at /companies/<slug>.
+  keyword?: string
+  slug?: string
+  datePublished?: string
+  dateModified?: string
 }
 
 // Card data for the "이런 사건도 함께 확인하세요" links under a post, chosen by the server.
-type CompanyRelatedCase = Pick<CompanyCase, 'id' | 'name' | 'service' | 'image'>
+type CompanyRelatedCase = Pick<CompanyCase, 'id' | 'name' | 'service' | 'image' | 'slug'>
+
+const getCompanyCaseKeyPath = (item: Pick<CompanyCase, 'id' | 'slug'>): string =>
+  getCompanyCasePath(item.slug || item.id)
+
+const isSelectedCompanyCase = (item: Pick<CompanyCase, 'id' | 'slug'>, pathKey: string): boolean =>
+  Boolean(pathKey) && (item.slug === pathKey || item.id === pathKey)
 
 type CompanyPageBootstrap =
   | {
@@ -237,8 +266,6 @@ const ROUTE_PATHS: Record<PageRoute, string> = {
 }
 
 const SITE_BASE_URL = CONTENT_SITE.url
-const SEARCH_RESULT_SITE_NAME = '법무법인나란'
-const SEARCH_RESULT_SECTION_NAME = '핀테크전문'
 
 
 
@@ -331,46 +358,13 @@ const toAbsoluteSiteUrl = (path: string): string => {
   }
 }
 
-const SEO_DESCRIPTION_MAX_LENGTH = 155
-
-const normalizeSeoText = (value: string): string =>
-  value
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/[\r\n\t]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-
-const getSeoDescriptionExcerpt = (description: string, fallback: string): string => {
-  const normalizedDescription = normalizeSeoText(description)
-  const normalizedFallback = normalizeSeoText(fallback)
-  const source = normalizedDescription || normalizedFallback
-
-  if (source.length <= SEO_DESCRIPTION_MAX_LENGTH) {
-    return source
-  }
-
-  const clipped = source.slice(0, SEO_DESCRIPTION_MAX_LENGTH).trim()
-  const lastSpaceIndex = clipped.lastIndexOf(' ')
-  const readableClip =
-    lastSpaceIndex >= Math.floor(SEO_DESCRIPTION_MAX_LENGTH * 0.6)
-      ? clipped.slice(0, lastSpaceIndex).trim()
-      : clipped
-
-  return `${readableClip}...`
-}
-
+// Same wording as the server-rendered page (shared/company-seo.js).
 const getCompanyCaseSeoMeta = (companyCase: CompanyCase): SeoMeta => {
-  const title = `${companyCase.name} | 사기업체 게시판 | 법무법인 나란`
-  const description = getSeoDescriptionExcerpt(
-    companyCase.description,
-    `${companyCase.name} 관련 ${companyCase.service} 피해 사례와 피해회복 상담 정보를 확인하세요.`,
-  )
-
   return {
-    title,
-    description,
-    keywords: `${companyCase.name}, ${companyCase.service}, ${companyCase.name} 사기, 사기업체 게시판, 사기 피해 사례, 피해회복 상담, ${DEFAULT_SEO_KEYWORDS}`,
-    path: getCompanyCasePath(companyCase.id),
+    title: getCompanySeoTitle(companyCase),
+    description: getCompanySeoDescription(companyCase),
+    keywords: getCompanySeoKeywords(companyCase),
+    path: getCompanyCaseKeyPath(companyCase),
     image: companyCase.image,
   }
 }
@@ -507,39 +501,12 @@ const getRouteStructuredData = (
   }
 
   if (selectedCompanyCase) {
-    const imageUrl = selectedCompanyCase.image ? toAbsoluteSiteUrl(selectedCompanyCase.image) : undefined
-
-    return {
-      '@context': 'https://schema.org',
-      '@graph': [
-        {
-          '@type': 'Article',
-          headline: selectedCompanyCase.name,
-          name: seoMeta.title,
-          description: seoMeta.description,
-          url: canonicalUrl,
-          inLanguage: 'ko-KR',
-          image: imageUrl,
-          articleSection: selectedCompanyCase.service,
-          mainEntityOfPage: {
-            '@type': 'WebPage',
-            '@id': canonicalUrl,
-          },
-          author: {
-            '@type': 'Organization',
-            name: '법무법인 나란',
-            url: SITE_BASE_URL,
-          },
-          publisher: {
-            '@type': 'Organization',
-            name: '법무법인 나란',
-            url: SITE_BASE_URL,
-          },
-          about: [selectedCompanyCase.name, selectedCompanyCase.service, '사기 피해 사례', '피해회복 상담'],
-        },
-        getCompaniesBreadcrumbStructuredData(canonicalUrl, selectedCompanyCase),
-      ],
-    }
+    return buildCompanyCaseStructuredData({
+      siteUrl: SITE_BASE_URL,
+      canonicalUrl,
+      imageUrl: selectedCompanyCase.image ? toAbsoluteSiteUrl(selectedCompanyCase.image) : undefined,
+      item: selectedCompanyCase,
+    })
   }
 
   return {
@@ -566,7 +533,7 @@ const getRouteStructuredData = (
             '@type': 'ListItem',
             position: (companyPage - 1) * COMPANY_CASES_PER_PAGE + index + 1,
             name: item.name,
-            url: toAbsoluteSiteUrl(getCompanyCasePath(item.id)),
+            url: toAbsoluteSiteUrl(getCompanyCaseKeyPath(item)),
           })),
         },
       },
@@ -621,7 +588,6 @@ const getCompanyCaseIdFromPath = (pathname: string): string => {
   }
 }
 
-const getCompanyCasePath = (id: string): string => `${ROUTE_PATHS.companies}/${encodeURIComponent(id)}`
 
 const getCompaniesPagePath = (page: number, searchQuery = ''): string => {
   const params = new URLSearchParams()
@@ -1462,6 +1428,34 @@ const runWithPermissionRetry = async <T,>(params: {
   throw lastError ?? new Error('권한 오류로 처리에 실패했습니다.')
 }
 
+// Same markup as renderCompanyGuide in api/company-page.js.
+const CompanyGuideSection = ({ item }: { item: CompanyCase }) => {
+  const guide = getCompanyGuide(item)
+
+  return (
+    <section className="company-guide" aria-labelledby="company-guide-title">
+      <h2 id="company-guide-title" className="company-guide-title">
+        {guide.checklistTitle}
+      </h2>
+      <ol className="company-guide-steps">
+        {guide.checklist.map((step) => (
+          <li key={step}>{step}</li>
+        ))}
+      </ol>
+      <h2 className="company-guide-title">{guide.faqTitle}</h2>
+      <dl className="company-guide-faq">
+        {guide.faq.map(({ question, answer }) => (
+          <div className="company-guide-faq-item" key={question}>
+            <dt>{question}</dt>
+            <dd>{answer}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="company-guide-disclaimer">{guide.disclaimer}</p>
+    </section>
+  )
+}
+
 function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
   const pathname = typeof window === 'undefined' ? initialPathname : window.location.pathname
   const [route, setRoute] = useState<PageRoute>(() => resolveRoute(pathname))
@@ -1668,11 +1662,12 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
   const shouldShowKeywordCompanySection =
     Boolean(landingPowerlinkKeyword) && (!companyCasesLoaded || keywordCompanyCases.length > 0)
   const selectedCompanyCase = useMemo(
-    () => companyCases.find((item) => item.id === selectedCompanyCaseId) ?? null,
+    () => companyCases.find((item) => isSelectedCompanyCase(item, selectedCompanyCaseId)) ?? null,
     [companyCases, selectedCompanyCaseId],
   )
   const selectedCompanyRelatedCases =
-    INITIAL_COMPANY_PAGE_DATA?.kind === 'detail' && INITIAL_COMPANY_PAGE_DATA.item.id === selectedCompanyCaseId
+    INITIAL_COMPANY_PAGE_DATA?.kind === 'detail' &&
+    isSelectedCompanyCase(INITIAL_COMPANY_PAGE_DATA.item, selectedCompanyCaseId)
       ? INITIAL_COMPANY_PAGE_DATA.relatedItems
       : []
   const companyServiceSuggestions = useMemo(
@@ -2349,7 +2344,7 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
     if (route === 'companies' && selectedCompanyCaseId) {
       if (
         INITIAL_COMPANY_PAGE_DATA?.kind === 'detail' &&
-        INITIAL_COMPANY_PAGE_DATA.item.id === selectedCompanyCaseId
+        isSelectedCompanyCase(INITIAL_COMPANY_PAGE_DATA.item, selectedCompanyCaseId)
       ) {
         setCompanyCasesLoaded(true)
         return
@@ -2358,13 +2353,31 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
       let active = true
       setCompanyCasesLoaded(false)
 
-      void getDoc(doc(db, 'companyCases', selectedCompanyCaseId))
+      // The address is normally a keyword (company name); old links use the document id.
+      const findSelectedCompanyCase = async () => {
+        const byId = await getDoc(doc(db, 'companyCases', selectedCompanyCaseId))
+
+        if (byId.exists()) {
+          return byId
+        }
+
+        const byName = await getDocs(
+          query(
+            collection(db, 'companyCases'),
+            where('name', 'in', getCompanyNameCandidates(selectedCompanyCaseId)),
+            limit(10),
+          ),
+        )
+        return byName.docs[0] ?? null
+      }
+
+      void findSelectedCompanyCase()
         .then((snapshot) => {
           if (!active) {
             return
           }
 
-          if (!snapshot.exists()) {
+          if (!snapshot || !snapshot.exists()) {
             setCompanyCases([])
             setCompanyCasesLoaded(true)
             return
@@ -2381,7 +2394,20 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
 
           setCompanyCases(
             name && service && description
-              ? [{ id: snapshot.id, name, service, description, image, isPublic, isSearchBlocked, hasRichContent }]
+              ? [
+                  {
+                    id: snapshot.id,
+                    slug: selectedCompanyCaseId,
+                    keyword: data.keyword,
+                    name,
+                    service,
+                    description,
+                    image,
+                    isPublic,
+                    isSearchBlocked,
+                    hasRichContent,
+                  },
+                ]
               : [],
           )
           setCompanyCasesLoaded(true)
@@ -2415,6 +2441,13 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
     const unsubscribe = onSnapshot(
       companyCasesQuery,
       (snapshot) => {
+        const slugIndex = buildCompanySlugIndex(
+          snapshot.docs.map((snapshotDoc) => ({
+            id: snapshotDoc.id,
+            name: snapshotDoc.get('name'),
+            createdAt: snapshotDoc.get('createdAt'),
+          })),
+        )
         const mappedCases = snapshot.docs
           .map((snapshotDoc) => {
             const data = snapshotDoc.data()
@@ -2429,6 +2462,7 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
 
             return {
               id: snapshotDoc.id,
+              slug: getCompanySlug(slugIndex, snapshotDoc.id),
               name,
               service,
               description,
@@ -4282,6 +4316,8 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
                       </a>
                     </section>
 
+                    <CompanyGuideSection item={selectedCompanyCase} />
+
                     {selectedCompanyRelatedCases.length > 0 ? (
                       <section className="company-related" aria-labelledby="company-related-title">
                         <h2 id="company-related-title" className="company-related-title">
@@ -4291,7 +4327,7 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
                           {selectedCompanyRelatedCases.map((item) => (
                             <a
                               className="company-card company-card-filled company-card-link"
-                              href={getCompanyCasePath(item.id)}
+                              href={getCompanyCaseKeyPath(item)}
                               key={item.id}
                             >
                               <div className="company-card-thumb-wrap">
@@ -4356,7 +4392,7 @@ function App({ initialPathname = '/' }: { initialPathname?: string } = {}) {
                         ? paginatedCompanyCases.map((item) => (
                             <a
                               className="company-card company-card-filled company-card-link"
-                              href={getCompanyCasePath(item.id)}
+                              href={getCompanyCaseKeyPath(item)}
                               key={item.id}
                             >
                               <div className="company-card-thumb-wrap">

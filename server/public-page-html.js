@@ -22,6 +22,10 @@ export const buildPublicPageHtml = (template, markup, route) => {
   const normalizedOrigin = new URL(templateCanonical[1]).origin
   let html = template.replaceAll(templateOrigin, site.url).replaceAll(normalizedOrigin, site.url)
   html = html.replace(/<title>[\s\S]*?<\/title>/i, () => `<title>${escapeHtml(meta.title)}</title>`)
+  // The FAQ in the shell answers the questions shown on the home page only.
+  if (route !== 'home') {
+    html = html.replace(/\s*<script\s+[^>]*id=["']homepage-faq-structured-data["'][^>]*>[\s\S]*?<\/script>/i, '')
+  }
 
   const setMeta = (attribute, key, value) => {
     const tag = `<meta ${attribute}="${key}" content="${escapeHtml(value)}" />`

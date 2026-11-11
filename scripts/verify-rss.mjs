@@ -5,6 +5,7 @@ import { deleteApp, initializeApp } from 'firebase-admin/app'
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import handler, { getLatestCompanyRssItems, renderRss } from '../api/rss.js'
 import { resolveCompanyContent } from '../shared/company-content.js'
+import { toCompanySlug } from '../shared/company-slug.js'
 import { CONTENT_SITE as site } from '../shared/site.js'
 
 // Model Firestore ordering, limits and document cursors without live credentials.
@@ -14,6 +15,8 @@ const createCollection = (records) => {
     orderBy: (field, direction) => makeQuery({ field, direction, limit, cursor }),
     limit: (limit) => makeQuery({ field, direction, limit, cursor }),
     startAfter: (cursor) => makeQuery({ field, direction, limit, cursor }),
+    // Only the RSS handler reads names for keyword URLs; it is not counted as a page read.
+    select: () => ({ get: async () => ({ docs: records }) }),
     get: async () => {
       reads += 1
       const ordered = records.filter((record) => !field || record.data()[field] !== undefined)
@@ -119,7 +122,7 @@ try {
     assert.equal(res.headers['Content-Type'], 'application/rss+xml; charset=utf-8')
     assert.match(res.headers['Cache-Control'], /s-maxage=300/)
     assert.ok(res.body.includes(`href="${site.url}/rss.xml"`))
-    assert.ok(res.body.includes(`${site.url}/companies/`))
+    assert.ok(res.body.includes(`<link>${site.url}/companies/${encodeURIComponent(toCompanySlug(specialRecord.data().name))}</link>`))
     const head = response()
     await handler({ ...req, method: 'HEAD' }, head)
     assert.equal(head.statusCode, 200)

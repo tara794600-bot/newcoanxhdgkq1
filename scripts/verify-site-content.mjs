@@ -4,6 +4,9 @@ import { mock } from 'node:test'
 import { deleteApp, initializeApp } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
 import { matchesCompanySearch, resolveCompanyContent } from '../shared/company-content.js'
+import { getCompanySeoDescription, getCompanySeoTitle } from '../shared/company-seo.js'
+import { buildCompanySlugIndex, resolveCompanySlug, toCompanySlug } from '../shared/company-slug.js'
+import { clearCompanySlugIndex } from '../server/company-slug-index.js'
 import { companyPostToPlainText, fillCompanyPostImageAlt, getCompanyPostImageUrls, sanitizeCompanyPostHtml, summarizeCompanyPostText } from '../shared/company-post.js'
 import { CONTENT_SITE as site } from '../shared/site.js'
 import companyHandler, { buildCompaniesPageHtml, buildCompanyCasePageHtml, buildNotFoundPageHtml } from '../api/company-page.js'
@@ -29,15 +32,20 @@ assert.equal(matchesCompanySearch(original, '없는 검색어'), false)
 assert.equal(resolveCompanyContent(original).name, expected.name)
 
 const detail = buildCompanyCasePageHtml(html, original)
-assert.ok(detail.includes(`<title>${expected.name} | 사기업체 게시판 | 법무법인 나란</title>`))
+const expectedTitle = '샘플 업체 사기 피해 확인 — 지급정지·피해금 반환 절차 | 법무법인 나란'
+assert.equal(getCompanySeoTitle(expected), expectedTitle)
+assert.ok(detail.includes(`<title>${expectedTitle}</title>`))
 assert.ok(detail.includes(`<h1>${expected.name}</h1>`))
 assert.ok(detail.includes(`rel="canonical" href="${site.url}/companies/shared-post"`))
-assert.ok(detail.includes(`property="og:title" content="${expected.name} | 사기업체 게시판 | 법무법인 나란"`))
-assert.ok(detail.includes(`name="twitter:title" content="${expected.name} | 사기업체 게시판 | 법무법인 나란"`))
+assert.ok(detail.includes(`property="og:title" content="${expectedTitle}"`))
+assert.ok(detail.includes(`name="twitter:title" content="${expectedTitle}"`))
+assert.ok(getCompanySeoDescription(expected).startsWith('샘플 업체 관련 투자사기 피해가 의심된다면'))
+assert.ok(getCompanySeoDescription(expected).length <= 158)
+assert.ok(detail.includes('name="keywords" content="샘플 업체, 샘플 업체 사기,'))
 assert.equal(readBootstrap(detail).item.description, expected.description)
 assert.equal(readBootstrap(detail).item.name, expected.name)
 assert.equal(readArticle(detail).headline, expected.name)
-assert.equal(readArticle(detail).description, expected.description.replace(/\s+/g, ' '))
+assert.equal(readArticle(detail).description, getCompanySeoDescription(expected))
 
 const list = buildCompaniesPageHtml(html, { items: [original], page: 1, searchQuery: '', totalCount: 1, totalPages: 1 })
 assert.equal(readBootstrap(list).items[0].name, expected.name)
@@ -68,7 +76,7 @@ assert.equal(readBootstrap(symbolPage).item.description, resolveCompanyContent(s
 assert.ok(symbolPage.includes('<h1>$&amp; 업체'))
 assert.equal((symbolPage.match(/<title>/g) ?? []).length, 1)
 
-assert.deepEqual(resolveCompanyContent({}), { name: '', description: '' })
+assert.deepEqual(resolveCompanyContent({}), { keyword: '', name: '', description: '' })
 assert.equal(original.name, '샘플 업체')
 
 // Blog editor posts: stored HTML is filtered before it reaches any page.
@@ -107,7 +115,7 @@ assert.ok(relatedPage.includes('href="/companies/next-post"'))
 assert.ok(relatedPage.includes('<p class="company-card-name">다음 업체 피해 관련 확인 사항</p>'))
 assert.ok(relatedPage.includes('href="/companies/x%22y"'))
 assert.ok(!relatedPage.includes('<b>위험</b>'))
-assert.deepEqual(readBootstrap(relatedPage).relatedItems[0], { id: 'next-post', name: '다음 업체 피해 관련 확인 사항', service: '부업사기', image: '/logo.png' })
+assert.deepEqual(readBootstrap(relatedPage).relatedItems[0], { id: 'next-post', slug: 'next-post', name: '다음 업체 피해 관련 확인 사항', service: '부업사기', image: '/logo.png' })
 assert.equal(buildCompanyCasePageHtml(html, original).includes('company-related'), false)
 const hiddenRelated = buildCompanyCasePageHtml(html, { ...original, isPublic: false }, [relatedCard])
 assert.equal(hiddenRelated.includes('company-related'), false)
@@ -130,10 +138,13 @@ const response = () => ({
 })
 const app = initializeApp({ projectId: 'single-site-verification' })
 const snapshot = { id: original.id, exists: true, data: () => original }
+const keywordPath = `/companies/${encodeURIComponent('샘플-업체')}`
+clearCompanySlugIndex()
 mock.method(getFirestore(app), 'collection', (name) => {
   assert.equal(name, 'companyCases')
   return {
     get: async () => ({ docs: [snapshot] }),
+    select: () => ({ get: async () => ({ docs: [snapshot] }) }),
     doc: (id) => {
       assert.equal(id, original.id)
       return { get: async () => snapshot }
@@ -142,9 +153,14 @@ mock.method(getFirestore(app), 'collection', (name) => {
 })
 try {
   for (const host of [new URL(site.url).host, 'www.naranfintech.com', 'www.naranfintechnews.co.kr', 'localhost']) {
+    const redirect = response()
+    await companyHandler({ method: 'GET', url: '/api/company-page?id=shared-post', headers: { host } }, redirect)
+    assert.equal(redirect.statusCode, 301)
+    assert.equal(redirect.headers.Location, keywordPath)
+
     for (const [url, path] of [
       ['/companies', '/companies'],
-      ['/api/company-page?id=shared-post', '/companies/shared-post'],
+      [`/api/company-page?id=${encodeURIComponent('샘플-업체')}`, keywordPath],
     ]) {
       const res = response()
       await companyHandler({ method: 'GET', url, headers: { host } }, res)
@@ -157,7 +173,7 @@ try {
     const sitemapResponse = response()
     await sitemapHandler({ method: 'GET', url: '/sitemap.xml', headers: { host } }, sitemapResponse)
     assert.equal(sitemapResponse.statusCode, 200)
-    assert.ok(sitemapResponse.body.includes(`<loc>${site.url}/companies/shared-post</loc>`))
+    assert.ok(sitemapResponse.body.includes(`<loc>${site.url}${keywordPath}</loc>`))
     assert.doesNotMatch(sitemapResponse.body, /https:\/\/www\.naranfintech(?:news\.co\.kr|\.com)/)
   }
 } finally {
@@ -166,6 +182,8 @@ try {
 }
 
 // The detail entry point reads the blog body from its own collection.
+clearCompanySlugIndex()
+mock.method(console, 'error', () => {})
 const richApp = initializeApp({ projectId: 'rich-post-verification' })
 const richSnapshot = { id: 'rich-post', exists: true, data: () => ({ ...original, hasRichContent: true }) }
 mock.method(getFirestore(richApp), 'collection', (name) => ({
@@ -188,6 +206,8 @@ try {
 
 // The detail entry point reads only the posts registered right before and after
 // this one, then lists the same category first, nearest date first.
+clearCompanySlugIndex()
+mock.method(console, 'error', () => {})
 const relatedApp = initializeApp({ projectId: 'related-post-verification' })
 const relatedDoc = (id, service, createdAt, extra = {}) => ({
   id, exists: true, data: () => ({ ...original, name: `${id} 업체`, service, createdAt: new Date(createdAt), ...extra }),
@@ -237,6 +257,7 @@ try {
 
 // Posts missing here are read from the previous Firebase project, which still
 // holds the pages search engines indexed before this domain was separated.
+clearCompanySlugIndex()
 const legacyApp = initializeApp({ projectId: 'legacy-post-verification' })
 const legacyFields = {
   name: { stringValue: original.name },
@@ -275,5 +296,44 @@ try {
 } finally {
   mock.restoreAll()
   await deleteApp(legacyApp)
+}
+// Keyword slugs: the company name becomes the address of its detail page.
+assert.equal(toCompanySlug('더라운지'), '더라운지')
+assert.equal(toCompanySlug(' ORCA Market.com '), 'orca-market-com')
+assert.equal(toCompanySlug('A/B?C#D%E'), 'a-b-c-d-e')
+assert.equal(toCompanySlug('   '), '')
+const slugIndex = buildCompanySlugIndex([
+  { id: 'newer', name: '더라운지', createdAt: '2026-10-02T00:00:00Z' },
+  { id: 'older', name: '더라운지', createdAt: '2026-10-01T00:00:00Z' },
+  { id: 'english', name: 'ORCA Market', createdAt: '2026-10-03T00:00:00Z' },
+  { id: 'blank', name: '***', createdAt: '2026-10-03T00:00:00Z' },
+])
+assert.equal(slugIndex.slugById.get('older'), '더라운지')
+assert.equal(slugIndex.slugById.get('newer'), '더라운지-newer')
+assert.equal(slugIndex.slugById.get('blank'), 'blank')
+assert.deepEqual(resolveCompanySlug(slugIndex, '더라운지'), { id: 'older', slug: '더라운지', redirect: false })
+assert.deepEqual(resolveCompanySlug(slugIndex, '더라운지-newer'), { id: 'newer', slug: '더라운지-newer', redirect: false })
+assert.deepEqual(resolveCompanySlug(slugIndex, 'newer'), { id: 'newer', slug: '더라운지-newer', redirect: true })
+assert.deepEqual(resolveCompanySlug(slugIndex, 'ORCA-Market'), { id: 'english', slug: 'orca-market', redirect: true })
+assert.deepEqual(resolveCompanySlug(slugIndex, 'ORCA Market'), { id: 'english', slug: 'orca-market', redirect: true })
+assert.equal(resolveCompanySlug(slugIndex, '없는-업체'), null)
+
+// An unknown keyword answers 404 without re-reading a freshly built index.
+clearCompanySlugIndex()
+const missingApp = initializeApp({ projectId: 'missing-keyword-verification' })
+let indexReads = 0
+mock.method(getFirestore(missingApp), 'collection', () => ({
+  select: () => ({ get: async () => { indexReads += 1; return { docs: [snapshot] } } }),
+  doc: () => ({ get: async () => ({ exists: false }) }),
+}))
+mock.method(globalThis, 'fetch', async () => new Response('{}', { status: 404 }))
+try {
+  const res = response()
+  await companyHandler({ method: 'GET', url: `/api/company-page?id=${encodeURIComponent('없는-업체')}`, headers: {} }, res)
+  assert.equal(res.statusCode, 404)
+  assert.equal(indexReads, 1)
+} finally {
+  mock.restoreAll()
+  await deleteApp(missingApp)
 }
 console.log('Single-site content verification passed')

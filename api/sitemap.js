@@ -1,6 +1,8 @@
 import { cert, getApps, initializeApp } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
+import { getCompanyCasePath, getCompanySlug } from '../shared/company-slug.js'
 import { CONTENT_SITE } from '../shared/site.js'
+import { rememberCompanySlugIndex } from '../server/company-slug-index.js'
 
 const SITE_BASE_URL = CONTENT_SITE.url
 
@@ -75,6 +77,7 @@ const toDateString = (value) => {
 const getCompanyCaseUrls = async () => {
   const app = getFirebaseApp()
   const snapshot = await getFirestore(app).collection('companyCases').get()
+  const slugIndex = rememberCompanySlugIndex(snapshot.docs)
 
   return snapshot.docs
     .map((snapshotDoc) => {
@@ -88,7 +91,7 @@ const getCompanyCaseUrls = async () => {
       }
 
       return {
-        loc: `${SITE_BASE_URL}/companies/${encodeURIComponent(snapshotDoc.id)}`,
+        loc: `${SITE_BASE_URL}${getCompanyCasePath(getCompanySlug(slugIndex, snapshotDoc.id))}`,
         lastmod: toDateString(data.updatedAt ?? data.createdAt),
       }
     })
