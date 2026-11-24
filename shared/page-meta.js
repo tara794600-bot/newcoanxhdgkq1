@@ -20,7 +20,7 @@ export const SEO_META_BY_ROUTE = {
   lawyers: {
     title: '변호사 소개 | 법무법인 나란',
     description: '법무법인 나란의 형사, 부동산, 금융사기 피해회복 분야 변호사 프로필과 주요 경력을 확인하세요.',
-    keywords: `법무법인 나란 변호사, 서지원 변호사, 최지연 변호사, 정이든 변호사, ${DEFAULT_SEO_KEYWORDS}`,
+    keywords: `법무법인 나란 변호사, 서지원 변호사, 최지연 변호사, ${DEFAULT_SEO_KEYWORDS}`,
     path: '/lawyers',
   },
   companies: {

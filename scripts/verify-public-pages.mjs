@@ -39,13 +39,14 @@ for (const host of [new URL(site.url).host, 'www.naranfintech.com', 'www.naranfi
     assert.match(body, /사기 피해회복 자주 묻는 질문/)
     assert.match(body, /href="tel:15517202"/)
     assert.match(body, /data-prerendered=""/)
+    assert.doesNotMatch(html, /정이든/)
     if (route === 'home') {
       assert.match(body, /<span class="hero-typing-text">수많은 사기 피해 대응 경험,\n그 차이를 증명합니다\.<\/span>/)
       assert.match(body, /주식\/코인 사기/)
       assert.match(body, /로맨스스캠 사기/)
       assert.match(body, /<p class="hero-subcopy">잘못된 초기 대응은 <strong>수사중지·불송치·무혐의<\/strong>/)
     } else {
-      for (const name of ['서지원 대표변호사', '최지연 변호사', '정이든 변호사']) assert.ok(body.includes(name))
+      for (const name of ['서지원 대표변호사', '최지연 변호사']) assert.ok(body.includes(name))
       assert.match(body, /서울도봉경찰서 경미범죄 심사위원회 위원/)
       assert.doesNotMatch(body, /class="hero-section"/)
     }
